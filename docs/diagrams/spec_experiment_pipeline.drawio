@@ -1,0 +1,82 @@
+<mxfile host="Electron" agent="ChatGPT" compressed="false">
+  <diagram id="page1" name="Experimentation Pipeline">
+    <mxGraphModel dx="2430" dy="1773" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="2050" pageHeight="1550" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="n4" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=16;align=left;verticalAlign=top;spacing=10;" value="&lt;font style=&quot;font-size: 24px;&quot;&gt;&lt;b&gt;Input baselines&lt;/b&gt;&lt;br&gt;1. GH Dataset&lt;br&gt;2. “The Way Up”?&lt;/font&gt;" vertex="1">
+          <mxGeometry height="120" width="210" x="245" y="145" as="geometry" />
+        </mxCell>
+        <mxCell id="n5" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=16;align=left;verticalAlign=top;spacing=10;" value="&lt;font style=&quot;font-size: 24px;&quot;&gt;&lt;b&gt;Hold detection / segmentation baselines&lt;/b&gt;&lt;br&gt;1. Mask R-CNN baseline (from GH Dataset)&lt;br&gt;2. YOLOv8 baseline (from Beta Caller Paper)&lt;/font&gt;" vertex="1">
+          <mxGeometry height="120" width="550" x="778" y="145" as="geometry" />
+        </mxCell>
+        <mxCell id="n6" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=24;align=left;verticalAlign=top;spacing=10;fontFamily=Helvetica;fontColor=default;" value="&lt;b&gt;Route classification baselines&lt;/b&gt;&lt;br&gt;1. Color-only&lt;br&gt;2. GH Dataset route detection (MLP-based)" vertex="1">
+          <mxGeometry height="120" width="610" x="1452" y="145" as="geometry" />
+        </mxCell>
+        <mxCell id="n7" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=24;align=left;verticalAlign=top;spacing=10;" value="&lt;b&gt;Output / combinations&lt;/b&gt;&lt;br&gt;1. GH detector / dataset&lt;br&gt;2. Some other combination?&amp;nbsp;" vertex="1">
+          <mxGeometry height="120" width="370" x="2275" y="145" as="geometry" />
+        </mxCell>
+        <mxCell id="n8" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=20;align=center;verticalAlign=middle;spacing=10;" value="&lt;b&gt;&lt;font style=&quot;font-size: 36px;&quot;&gt;Wall Image&lt;/font&gt;&lt;/b&gt;" vertex="1">
+          <mxGeometry height="70" width="230" x="235" y="485" as="geometry" />
+        </mxCell>
+        <mxCell id="n9" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=19;align=center;verticalAlign=middle;spacing=10;" value="&lt;b&gt;&lt;font style=&quot;font-size: 36px;&quot;&gt;Hold Detection / Segmentation&lt;/font&gt;&lt;/b&gt;" vertex="1">
+          <mxGeometry height="70" width="560" x="773" y="485" as="geometry" />
+        </mxCell>
+        <mxCell id="n10" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=19;align=center;verticalAlign=middle;spacing=10;" value="&lt;b&gt;&lt;font style=&quot;font-size: 36px;&quot;&gt;Route Classification&lt;/font&gt;&lt;/b&gt;" vertex="1">
+          <mxGeometry height="70" width="390" x="1562" y="485" as="geometry" />
+        </mxCell>
+        <mxCell id="n11" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=19;align=center;verticalAlign=middle;spacing=10;" value="&lt;b&gt;&lt;font style=&quot;font-size: 36px;&quot;&gt;Output Image&lt;br&gt;with Routes&lt;/font&gt;&lt;/b&gt;" vertex="1">
+          <mxGeometry height="120" width="270" x="2325" y="460" as="geometry" />
+        </mxCell>
+        <mxCell id="e12" edge="1" parent="1" source="n8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#666666;strokeWidth=6;endArrow=block;endFill=1;" target="n9" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e13" edge="1" parent="1" source="n9" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#666666;strokeWidth=6;endArrow=block;endFill=1;" target="n10" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e14" edge="1" parent="1" source="n10" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#666666;strokeWidth=6;endArrow=block;endFill=1;" target="n11" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e15" edge="1" parent="1" source="n4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#6c8ebf;strokeWidth=6;endArrow=block;endFill=1;dashed=1;" target="n8" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e16" edge="1" parent="1" source="n5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#6c8ebf;strokeWidth=6;endArrow=block;endFill=1;dashed=1;" target="n9" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e17" edge="1" parent="1" source="n6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#6c8ebf;strokeWidth=6;endArrow=block;endFill=1;dashed=1;" target="n10" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e18" edge="1" parent="1" source="n7" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#6c8ebf;strokeWidth=6;endArrow=block;endFill=1;dashed=1;" target="n11" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="n19" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=24;align=left;verticalAlign=top;spacing=10;" value="&lt;b&gt;3. Additional test-set images (taken ourselves)&lt;/b&gt;&lt;br&gt;• Wide-angle&lt;br&gt;• Same color, different routes&lt;br&gt;&lt;br&gt;&lt;b&gt;4. Augmentations&lt;/b&gt;&lt;br&gt;• Lighting&lt;br&gt;• Chalk contamination&lt;br&gt;• Artificially similar-colored routes" vertex="1">
+          <mxGeometry height="260" width="600" x="50" y="720" as="geometry" />
+        </mxCell>
+        <mxCell id="n20" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=24;align=left;verticalAlign=top;spacing=10;" value="&lt;b&gt;3. Zero-shot segmentation / detection test&lt;/b&gt;&lt;br&gt;→ SAM (recommended by teaching team)" vertex="1">
+          <mxGeometry height="90" width="520" x="793" y="890" as="geometry" />
+        </mxCell>
+        <mxCell id="n21" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=24;align=left;verticalAlign=top;spacing=10;" value="&lt;b&gt;3. Additional SAM experiment&lt;/b&gt;&lt;br&gt;Also try SAM here without the hold detector as an additional stage before route classification.&lt;br&gt;&lt;br&gt;&lt;b&gt;4. DINOv3 backbone &lt;/b&gt;&lt;i style=&quot;&quot;&gt;&lt;font style=&quot;font-size: 20px;&quot;&gt;*Primary Experiment&lt;/font&gt;&lt;/i&gt;&lt;br&gt;+ spatial + color information&amp;nbsp;&lt;div&gt;-&amp;gt; Unsupervised Clustering&lt;/div&gt;" vertex="1">
+          <mxGeometry height="260" width="500" x="1507" y="720" as="geometry" />
+        </mxCell>
+        <mxCell id="n22" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=24;align=left;verticalAlign=top;spacing=10;" value="&lt;b&gt;Output / demo experiments&lt;/b&gt;&lt;br&gt;3. Run different pipelines with custom &quot;on-the-fly&quot; augmentations&lt;br&gt;4. Live demo on videos / new-field data (e.g. next hold detection from &quot;the way up&quot;)" vertex="1">
+          <mxGeometry height="160" width="640" x="2140" y="820" as="geometry" />
+        </mxCell>
+        <mxCell id="e23" edge="1" parent="1" source="n19" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#b85450;strokeWidth=6;endArrow=block;endFill=1;dashed=1;" target="n8" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e24" edge="1" parent="1" source="n20" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#b85450;strokeWidth=6;endArrow=block;endFill=1;dashed=1;" target="n9" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e25" edge="1" parent="1" source="n21" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#b85450;strokeWidth=6;endArrow=block;endFill=1;dashed=1;" target="n10" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e26" edge="1" parent="1" source="n22" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#b85450;strokeWidth=6;endArrow=block;endFill=1;dashed=1;" target="n11" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="n27" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=20;align=left;verticalAlign=top;spacing=10;" value="&lt;b&gt;Open questions&lt;/b&gt;&lt;br&gt;&lt;br&gt;1. How to do the train / val / test split even though we are running zero-shot models?&lt;br&gt;&lt;br&gt;2. How can we do initial data exploration? “Just go partly manual?” Can we do some inline statistics to help us optimize?&lt;br&gt;&lt;br&gt;3. How to do live augmentation / segmentation? SAM + dynamic mask?" vertex="1">
+          <mxGeometry height="200" width="1100" x="50" y="1180" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
