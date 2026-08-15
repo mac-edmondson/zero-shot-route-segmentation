@@ -1,0 +1,104 @@
+.workspace {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(0.85rem, 2vh, 2rem);
+  width: 100%;
+  height: 100dvh;
+  /* Grows with the viewport past the old fixed 1200px instead of stranding
+     large screens with dead gutters on both sides, capped so it never
+     turns into an unreadably wide sheet on ultra-wide/4K displays. */
+  max-width: clamp(1200px, 78vw, 1900px);
+  margin: 0 auto;
+  padding: clamp(1.25rem, 4vh, 3rem) clamp(1.25rem, 3vw, 2.5rem);
+  overflow: hidden;
+}
+
+.toolbar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  background: var(--surface);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 0.85rem 1.25rem;
+  box-shadow: var(--shadow-sm);
+}
+
+.lighting {
+  width: 240px;
+  max-width: 100%;
+}
+
+.error {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: var(--danger);
+  background: var(--danger-soft);
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+  border-radius: var(--radius-md);
+  padding: 0.6rem 1rem;
+  font-size: 0.82rem;
+}
+
+.errorDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--danger);
+  flex-shrink: 0;
+}
+
+.mainGrid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  /* The canvas column absorbs extra width as the workspace grows; the
+     segment sidebar is useful but not content-heavy, so it's capped
+     instead of stretching into a wide empty-looking rail. */
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 420px);
+  gap: 1.5rem;
+  align-items: stretch;
+}
+
+.canvasColumn {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+@media (max-width: 760px) {
+  .mainGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* A visibly more compact pass for small phones -- tighter padding/gaps
+   throughout rather than just letting the fluid clamp()s bottom out. */
+@media (max-width: 480px) {
+  .workspace {
+    gap: 0.75rem;
+    padding: 1rem 0.85rem;
+  }
+
+  .toolbar {
+    padding: 0.65rem 0.85rem;
+    gap: 0.85rem;
+  }
+
+  .mainGrid {
+    gap: 0.85rem;
+  }
+
+  .canvasColumn {
+    gap: 0.75rem;
+  }
+}
