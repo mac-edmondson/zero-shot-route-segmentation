@@ -1,0 +1,55 @@
+services:
+  ################################################################################
+  # Nginx
+  #   This is configured as a reverse proxy to:
+  #   1. To direct traffic in the right places (e.g. "/", "/api", etc)
+  #   2. To host data files for the image gallery (which nginx is doing itself)
+  ################################################################################
+  nginx:
+    image: 'nginx:alpine'
+    volumes:
+      - ${GALLERY_PATH}:/gallery:ro
+      - ./config/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+
+      # Browser-facing URL:
+      NEXT_PUBLIC_API_URL: https://api.example.com
+
+      # Optional: useful for server-side Next.js requests.
+      INTERNAL_API_URL: http://backend:8000
+    expose:
+      - "3000"
+    healthcheck:
+      test: [ "CMD", "wget", "--spider", "-q", "http://127.0.0.1:3000" ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      ENVIRONMENT: production
+      # Example:
+      # DATABASE_URL: postgresql://user:password@postgres:5432/app
+    expose:
+      - "8000"
+    healthcheck:
+      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')" ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+# TODO: Use the compose that is being used by coolify and combine it with this.
+# This is the one
