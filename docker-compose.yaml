@@ -10,7 +10,10 @@ services:
       context: ./src/nginx
       dockerfile: Dockerfile
     volumes:
-      - ${GALLERY_PATH}:/gallery:ro,Z
+      - type: bind
+        source: ${GALLERY_PATH}
+        target: /gallery
+        read_only: true
 
   frontend:
     build:
