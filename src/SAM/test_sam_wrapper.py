@@ -8,13 +8,7 @@ from PIL import Image
 from sam_wrapper import SAMWrapper
 
 
-HOLD_CLICKS = [
-    [271, 120],
-    [269, 185],
-    [389, 171],
-    [147, 93],
-    [116, 162],
-]
+HOLD_CLICKS = [[271, 120], [269, 185], [389, 171], [147, 93], [116, 162]]
 
 
 def run_sam_wrapper_test(image_filename: str) -> tuple[np.ndarray, list[list[list[int]]], list[dict[str, object]]]:
@@ -30,5 +24,5 @@ def run_sam_wrapper_test(image_filename: str) -> tuple[np.ndarray, list[list[lis
 
 
 if __name__ == "__main__":
-    masks, holds, rles = run_sam_wrapper_test("image.jpg")
+    masks, holds, rles = run_sam_wrapper_test("climbing-wall-climbing-wall-with-colorful-rocks-photo.jpg")
     print(masks.shape, len(holds), len(rles))

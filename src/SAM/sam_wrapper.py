@@ -55,7 +55,7 @@ class SAMWrapper:
         model_inputs = {key: value.to(self.device) if isinstance(value, torch.Tensor) else value for key, value in inputs.items()}
         with torch.inference_mode():
             outputs = self.model(**model_inputs, multimask_output=False)
-        processed = self.processor.image_processor.post_process_masks(outputs.pred_masks.detach().cpu(), inputs["original_sizes"].cpu(), inputs["reshaped_input_sizes"].cpu(), binarize=True)
+        processed = self.processor.post_process_masks(outputs.pred_masks.detach().cpu(), inputs["original_sizes"].cpu(), binarize=True)
         return self._binary_masks(processed[0], expected_count=len(clicks), threshold=True)
 
     @staticmethod
