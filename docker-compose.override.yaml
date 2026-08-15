@@ -1,0 +1,5 @@
+# This serves to set the port for local development
+services:
+  nginx:
+    ports:
+      - "8080:80"

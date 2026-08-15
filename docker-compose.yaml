@@ -8,40 +8,43 @@ services:
   nginx:
     image: 'nginx:alpine'
     volumes:
-      - ${GALLERY_PATH}:/gallery:ro
-      - ./config/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ${GALLERY_PATH}:/gallery:ro,Z
+      - ./config/nginx.conf:/etc/nginx/conf.d/default.conf:ro,Z
 
   frontend:
     build:
-      context: ./frontend
+      context: ./src/frontend
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL}
+        NEXT_PUBLIC_USE_MOCK_API: ${NEXT_PUBLIC_USE_MOCK_API:-false}
     restart: unless-stopped
     environment:
       NODE_ENV: production
-
-      # Browser-facing URL:
-      NEXT_PUBLIC_API_URL: https://api.example.com
-
-      # Optional: useful for server-side Next.js requests.
-      INTERNAL_API_URL: http://backend:8000
     expose:
       - "3000"
     healthcheck:
       test: [ "CMD", "wget", "--spider", "-q", "http://127.0.0.1:3000" ]
-      interval: 30s
+      interval: 2m
       timeout: 5s
       retries: 5
       start_period: 20s
 
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    # Temporary API stub; replace with the real backend image when available.
+    image: python:3.12-alpine
+    command:
+      - python
+      - -c
+      - >-
+        from http.server import BaseHTTPRequestHandler, HTTPServer;
+        HTTPServer(("", 8000), type("Handler", (BaseHTTPRequestHandler,), {
+        "do_GET": lambda self: (self.send_response(200),
+        self.end_headers(), self.wfile.write(b"hello")),
+        "log_message": lambda self, *args: None})).serve_forever()
     restart: unless-stopped
     environment:
       ENVIRONMENT: production
-      # Example:
-      # DATABASE_URL: postgresql://user:password@postgres:5432/app
     expose:
       - "8000"
     healthcheck:
@@ -49,7 +52,4 @@ services:
       interval: 30s
       timeout: 5s
       retries: 5
-      start_period: 15s
-
-# TODO: Use the compose that is being used by coolify and combine it with this.
-# This is the one
+      start_period: 5s
