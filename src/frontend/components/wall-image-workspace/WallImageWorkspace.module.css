@@ -1,0 +1,248 @@
+.workspace {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(0.85rem, 2vh, 2rem);
+  width: 100%;
+  height: 100dvh;
+  /* Grows with the viewport past the old fixed 1200px instead of stranding
+     large screens with dead gutters on both sides, capped so it never
+     turns into an unreadably wide sheet on ultra-wide/4K displays. */
+  max-width: clamp(1200px, 78vw, 1900px);
+  margin: 0 auto;
+  padding: clamp(1.25rem, 4vh, 3rem) clamp(1.25rem, 3vw, 2.5rem);
+  overflow: hidden;
+}
+
+/* Fades and shrinks slightly in place -- same "kind" of exit as the
+   segment panel's own closing animation (a settle toward a smaller,
+   fading version of itself), just without the character/hold mechanics
+   that only make sense for that component. The toolbar's own box keeps
+   its normal space reserved throughout -- nothing else in the layout
+   moves or resizes when this leaves, only this element's own visibility
+   changes. */
+.toolbarSlot {
+  flex-shrink: 0;
+  opacity: 1;
+  filter: blur(0);
+  transform: scale(1);
+  transition:
+    opacity 450ms var(--ease),
+    filter 450ms var(--ease),
+    transform 450ms cubic-bezier(0.45, 0, 0.15, 1);
+}
+
+.toolbarSlot.leaving {
+  opacity: 0;
+  filter: blur(4px);
+  transform: scale(0.94);
+  pointer-events: none;
+}
+
+.toolbar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  background: var(--surface);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 0.85rem 1.25rem;
+  box-shadow: var(--shadow-sm);
+}
+
+/* The toolbar's entrance -- its two pieces rise and clear into place
+   rather than just appearing, with the lighting slider following the
+   source buttons by a beat so it reads as a small cascade rather than
+   one flat block. A slight overshoot on the way in (same spring feel as
+   the segment panel's own reform/pop moments) gives it a bit of life. */
+.toolbarItem {
+  opacity: 0;
+  filter: blur(6px);
+  transform: translateY(-14px) scale(0.96);
+  transition:
+    opacity 550ms var(--ease),
+    filter 550ms var(--ease),
+    transform 550ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.toolbarItemLighting {
+  transition-delay: 130ms;
+}
+
+.toolbarItemIn {
+  opacity: 1;
+  filter: blur(0);
+  transform: translateY(0) scale(1);
+}
+
+.lighting {
+  width: 240px;
+  max-width: 100%;
+}
+
+.error {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: var(--danger);
+  background: var(--danger-soft);
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+  border-radius: var(--radius-md);
+  padding: 0.6rem 1rem;
+  font-size: 0.82rem;
+}
+
+.errorDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--danger);
+  flex-shrink: 0;
+}
+
+.mainGrid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  /* Fixed tracks -- the canvas column's size never depends on whether the
+     segment sidebar is currently showing or fading out, so finishing
+     augmentation never makes the wall image resize. */
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 420px);
+  gap: 1.5rem;
+  align-items: stretch;
+}
+
+.canvasColumn {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+/* Just a fixed-size slot -- SegmentPanel handles its own closing
+   animation internally (see its `closing` prop), so this wrapper only
+   needs to keep the sidebar's grid track reserved at a constant size;
+   nothing next to it should ever move or resize. display: grid with both
+   children sharing the same cell (see globally-used "stack in one grid
+   cell" technique) lets the model-select panel take over the exact same
+   footprint SegmentPanel occupied, once it's ready to. */
+.segmentSlot {
+  min-height: 0;
+  display: grid;
+}
+
+.segmentSlot > * {
+  grid-area: 1 / 1;
+  min-height: 0;
+  min-width: 0;
+}
+
+/* Takes over the segment sidebar's spot once SegmentPanel has fully
+   finished leaving (see MODEL_SELECT_REVEAL_MS) -- same rise+fade+blur
+   entrance vocabulary as the toolbar's own pieces above, for a consistent
+   "something new has arrived here" feel. */
+.modelSelectPanel {
+  align-self: center;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding: 0 0.25rem;
+  opacity: 0;
+  filter: blur(6px);
+  transform: translateY(14px) scale(0.97);
+  transition:
+    opacity 550ms var(--ease),
+    filter 550ms var(--ease),
+    transform 550ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* The two pickers side by side -- "one after the other", not stacked. */
+.modelSelectRow {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.modelSelectRow > * {
+  flex: 1;
+  min-width: 0;
+}
+
+/* The Recognition button's own entrance, once either picker has a value --
+   same rise+fade+blur+spring vocabulary again, mounted only once shown so
+   it always has a real "before" frame to animate from. */
+.recognitionButtonWrap {
+  opacity: 0;
+  filter: blur(6px);
+  transform: translateY(10px) scale(0.96);
+  transition:
+    opacity 480ms var(--ease),
+    filter 480ms var(--ease),
+    transform 480ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.recognitionButtonWrap > button {
+  width: 100%;
+}
+
+.recognitionButtonWrapIn {
+  opacity: 1;
+  filter: blur(0);
+  transform: translateY(0) scale(1);
+}
+
+.modelSelectPanelIn {
+  opacity: 1;
+  filter: blur(0);
+  transform: translateY(0) scale(1);
+}
+
+@media (max-width: 760px) {
+  .mainGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* A visibly more compact pass for small phones -- tighter padding/gaps
+   throughout rather than just letting the fluid clamp()s bottom out. */
+@media (max-width: 480px) {
+  .workspace {
+    gap: 0.75rem;
+    padding: 1rem 0.85rem;
+  }
+
+  .toolbar {
+    padding: 0.65rem 0.85rem;
+    gap: 0.85rem;
+  }
+
+  .mainGrid {
+    gap: 0.85rem;
+  }
+
+  .canvasColumn {
+    gap: 0.75rem;
+  }
+
+  /* Side by side is too cramped at this width for text like "Select route
+     model" -- falls back to stacked here, same as it was before this was
+     asked for a wider row layout. */
+  .modelSelectRow {
+    flex-direction: column;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toolbarSlot,
+  .toolbarItem,
+  .modelSelectPanel,
+  .recognitionButtonWrap {
+    transition-duration: 0s;
+    transition-delay: 0s;
+  }
+}

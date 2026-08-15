@@ -1,0 +1,201 @@
+/* Registered so the browser can smoothly interpolate these across a
+   transition -- unregistered custom properties (and swapping between two
+   different gradient/background values outright) just snap instantly. */
+@property --fill {
+  syntax: "<percentage>";
+  inherits: false;
+  initial-value: 0%;
+}
+
+@property --lit-color {
+  syntax: "<color>";
+  inherits: false;
+  initial-value: transparent;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-size: 0.78rem;
+  background: var(--surface);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  padding: 0.4rem 0.9rem;
+}
+
+.node {
+  --fill: 0%;
+  --lit-color: var(--muted-2);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  white-space: nowrap;
+  /* The label text itself fills in diagonally, same mechanism as the dot:
+     a hard-edged two-stop gradient clipped to the text, with the stop
+     position and the "lit" color both smoothly animated. */
+  background-image: linear-gradient(135deg, var(--lit-color) var(--fill), var(--muted-2) var(--fill));
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  transition:
+    --fill 650ms cubic-bezier(0.45, 0, 0.15, 1),
+    --lit-color 650ms cubic-bezier(0.45, 0, 0.15, 1);
+}
+
+.dot {
+  --fill: 0%;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background-image: linear-gradient(90deg, var(--accent) var(--fill), transparent var(--fill));
+  border: 1.5px solid var(--border-strong);
+  box-shadow: 0 0 0 0 rgba(255, 122, 69, 0);
+  transition:
+    --fill 650ms cubic-bezier(0.45, 0, 0.15, 1),
+    box-shadow 650ms cubic-bezier(0.45, 0, 0.15, 1),
+    border-color 650ms cubic-bezier(0.45, 0, 0.15, 1);
+}
+
+/* Active: the step you're currently on -- fully lit, with a slow "you are here" pulse. */
+.active {
+  --fill: 100%;
+  --lit-color: var(--foreground);
+}
+
+.active .dot {
+  --fill: 100%;
+  border-color: transparent;
+  animation: step-pulse 2.2s ease-in-out infinite;
+}
+
+/* Complete: already done -- fully filled, but a subdued tone rather than
+   the brighter "active" color, so the two stay visually distinct. */
+.complete {
+  --fill: 100%;
+  --lit-color: var(--muted);
+}
+
+.complete .dot {
+  --fill: 100%;
+  border-color: transparent;
+  box-shadow: 0 0 5px rgba(255, 122, 69, 0.5);
+}
+
+/* In progress: work is actively happening here but it isn't finished --
+   a diagonal half-fill on both the hold and its label, not fully lit or
+   fully dark. */
+.inProgress {
+  --fill: 50%;
+  --lit-color: var(--foreground);
+}
+
+.inProgress .dot {
+  --fill: 50%;
+  box-shadow: 0 0 4px rgba(255, 122, 69, 0.35);
+}
+
+/* Locked: an unlit hold rather than a generic lock icon. */
+.locked {
+  --fill: 0%;
+  --lit-color: var(--muted-2);
+}
+
+.locked .dot {
+  --fill: 0%;
+}
+
+@keyframes step-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 8px rgba(255, 122, 69, 0.8);
+  }
+  50% {
+    box-shadow: 0 0 3px rgba(255, 122, 69, 0.4);
+  }
+}
+
+.connector {
+  position: relative;
+  width: 22px;
+  height: 1.5px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.connectorTrack {
+  position: absolute;
+  inset: 0;
+  background-image: repeating-linear-gradient(
+    to right,
+    var(--border-strong) 0 4px,
+    transparent 4px 7px
+  );
+}
+
+.connectorFill {
+  position: absolute;
+  inset: 0;
+  width: 0%;
+  background-image: linear-gradient(to right, var(--accent), var(--gold));
+  /* Plain width, not a custom property -- natively transitionable, so this
+     one didn't need the @property treatment above. */
+  transition: width 650ms cubic-bezier(0.45, 0, 0.15, 1);
+}
+
+/* A slow shimmer overlay, shown only while the preceding node is in
+   progress -- a quiet "getting close" cue distinct from the fill itself. */
+.connectorShimmer {
+  position: absolute;
+  inset: 0;
+  background-image: linear-gradient(100deg, transparent 30%, var(--accent-text) 50%, transparent 70%);
+  background-size: 220% 100%;
+  animation: connector-shimmer 2.4s linear infinite;
+}
+
+@keyframes connector-shimmer {
+  0% {
+    background-position: 220% 0;
+  }
+  100% {
+    background-position: -220% 0;
+  }
+}
+
+/* One-shot pop played on any node the moment it lights up further. */
+.pop .dot {
+  animation: unlock-pop 0.6s var(--ease);
+}
+
+@keyframes unlock-pop {
+  0% {
+    transform: scale(0.5);
+    box-shadow: 0 0 0 rgba(255, 122, 69, 0);
+  }
+  55% {
+    transform: scale(1.6);
+    box-shadow: 0 0 14px rgba(255, 122, 69, 0.9);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 5px rgba(255, 122, 69, 0.5);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .node,
+  .dot,
+  .connectorFill {
+    transition-duration: 0s;
+  }
+
+  .active .dot,
+  .connectorShimmer,
+  .pop .dot {
+    animation: none;
+  }
+}

@@ -1,0 +1,284 @@
+.panel {
+  position: relative;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* The panel's own final exit, once `closing` is set and the shrink/reform
+   sequence above has fully settled -- a plain fade+blur, same treatment
+   as the toolbar's exit in WallImageWorkspace so the two read as a pair. */
+.closing {
+  transition:
+    opacity 450ms var(--ease),
+    filter 450ms var(--ease);
+  opacity: 0;
+  filter: blur(4px);
+  pointer-events: none;
+}
+
+.message {
+  position: relative;
+  z-index: 1;
+  max-width: 22ch;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.65;
+}
+
+/* A real crossfade between the empty <-> prompt copy: both the outgoing
+   and incoming line are mounted and animating at once, stacked in the
+   same grid cell (grid, not absolute positioning, so the track still
+   sizes itself to the content naturally instead of collapsing). */
+.messageStack {
+  display: grid;
+  width: 100%;
+}
+
+.messageStackItem {
+  grid-area: 1 / 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.messageOut {
+  animation: message-swap-out 700ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes message-swap-out {
+  0% {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-16px);
+    filter: blur(5px);
+  }
+}
+
+.messageIn {
+  animation: message-swap-in 700ms var(--ease);
+}
+
+@keyframes message-swap-in {
+  0% {
+    opacity: 0;
+    transform: translateY(16px);
+    filter: blur(5px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+/* Word wrapper: keeps a word's characters from ever line-breaking mid-word
+   (wrapping can still happen between .word elements, just not inside one),
+   while still letting each character inside animate independently. */
+.word {
+  display: inline-block;
+  white-space: pre;
+}
+
+/* Each character moves on its own, around a transform-origin pointed at
+   the panel's center (set inline per character in JS) -- scaling toward a
+   distant origin makes the glyph shrink-and-travel (or grow-and-arrive)
+   rather than just shrinking or fading in place. A plain transition
+   (not a one-way @keyframes animation) so the same rule naturally plays
+   backwards when charAtHole is removed instead of added -- that's what
+   makes the reform (undo) direction "just work" via the same mechanism.
+   display: inline-block is required for transform-origin to apply
+   predictably. */
+.char {
+  display: inline-block;
+  transform: scale(1) rotate(0deg);
+  opacity: 1;
+  transition:
+    transform 560ms cubic-bezier(0.5, 0, 0.25, 1),
+    opacity 560ms cubic-bezier(0.5, 0, 0.25, 1);
+}
+
+/* Reforming (undo) plays a little brisker and with a slight overshoot,
+   rather than reusing the falling-in pace verbatim. */
+.charReform {
+  transition:
+    transform 530ms cubic-bezier(0.34, 1.56, 0.64, 1),
+    opacity 530ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.charAtHole {
+  transform: scale(0) rotate(230deg);
+  opacity: 0;
+}
+
+/* The hold: appears quickly behind the text (like a drain opening), sits
+   there pulsing while the text falls into it, then grows to become the
+   panel's own background/border -- same element throughout. */
+.morphCircle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 0;
+  width: 0px;
+  height: 0px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, var(--accent), var(--accent-strong));
+  box-shadow: 0 0 0 rgba(255, 122, 69, 0);
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(0);
+  /* Quick pop-in -- this is what governs the 0px -> 46px change. */
+  transition:
+    width 220ms cubic-bezier(0.34, 1.56, 0.64, 1),
+    height 220ms cubic-bezier(0.34, 1.56, 0.64, 1),
+    transform 220ms cubic-bezier(0.34, 1.56, 0.64, 1),
+    opacity 260ms var(--ease);
+}
+
+/* Dimmed while the text is still dissolving on top of it -- a soft glow
+   sitting behind the copy rather than a bright shape competing with it
+   for attention. Goes fully opaque only once morphExpanded takes over. */
+.morphVisible {
+  width: 46px;
+  height: 46px;
+  opacity: 0.5;
+  transform: translate(-50%, -50%) scale(1);
+  animation: hole-pulse 900ms ease-in-out infinite 220ms;
+}
+
+@keyframes hole-pulse {
+  0%,
+  100% {
+    box-shadow: var(--shadow-accent);
+  }
+  50% {
+    box-shadow:
+      0 0 0 6px rgba(255, 122, 69, 0.22),
+      0 0 22px rgba(255, 122, 69, 0.55);
+  }
+}
+
+.morphExpanded {
+  width: 100%;
+  height: 100%;
+  border-radius: var(--radius-xl);
+  background: var(--surface);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-md);
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+  animation: none;
+  /* Slower growth into the panel shape -- overrides morphCircle's quick
+     pop-in transition now that this is the active class combo. */
+  transition:
+    width 520ms cubic-bezier(0.34, 1.56, 0.64, 1),
+    height 520ms cubic-bezier(0.34, 1.56, 0.64, 1),
+    transform 520ms cubic-bezier(0.34, 1.56, 0.64, 1),
+    border-radius 520ms cubic-bezier(0.45, 0, 0.15, 1),
+    background-color 320ms var(--ease),
+    border-color 320ms var(--ease),
+    box-shadow 320ms var(--ease),
+    opacity 260ms var(--ease);
+}
+
+/* Reverse of morphExpanded -- the box retreating back down to a circle
+   before the text reforms. Its own (slightly brisker) transition timings
+   so this doesn't just reuse morphExpanded's slow "growing into the
+   panel" pace in reverse. */
+.morphShrinking {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  box-shadow: var(--shadow-accent);
+  opacity: 0.5;
+  transform: translate(-50%, -50%) scale(1);
+  transition:
+    width 530ms cubic-bezier(0.45, 0, 0.15, 1),
+    height 530ms cubic-bezier(0.45, 0, 0.15, 1),
+    transform 530ms cubic-bezier(0.45, 0, 0.15, 1),
+    border-radius 530ms cubic-bezier(0.45, 0, 0.15, 1),
+    box-shadow 420ms var(--ease),
+    opacity 420ms var(--ease);
+}
+
+.content {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  opacity: 0;
+  transition: opacity 260ms var(--ease);
+}
+
+.contentVisible {
+  opacity: 1;
+}
+
+.heading {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.headingText {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.count {
+  font-size: 0.72rem;
+  color: var(--muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  padding: 0.15rem 0.5rem;
+}
+
+.list {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  overflow-y: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .messageOut,
+  .messageIn,
+  .char,
+  .charReform,
+  .morphCircle,
+  .morphVisible,
+  .morphExpanded,
+  .morphShrinking,
+  .content,
+  .closing {
+    transition-duration: 0s;
+    animation-duration: 0.01ms;
+  }
+}
+
+@media (max-width: 480px) {
+  .content {
+    padding: 1rem;
+    gap: 0.75rem;
+  }
+}

@@ -1,0 +1,319 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { apiClient } from "@/lib/api";
+import type { Coordinate, Segment } from "@/lib/api";
+import { AppHeader } from "@/components/header/AppHeader";
+import { ImageSourceButtons } from "@/components/image-source-buttons/ImageSourceButtons";
+import { ImageCanvas } from "@/components/image-canvas/ImageCanvas";
+import { SegmentPanel } from "@/components/segment-panel/SegmentPanel";
+import { LabeledSlider } from "@/components/labeled-slider/LabeledSlider";
+import { Button } from "@/components/button/Button";
+import { StepIndicator } from "@/components/step-indicator/StepIndicator";
+import { ModelSelect } from "@/components/model-select/ModelSelect";
+import styles from "./WallImageWorkspace.module.css";
+
+const HOLD_MODEL_OPTIONS = ["Color-only", "DINO-only", "Combined"];
+const ROUTE_MODEL_OPTIONS = ["Color-only", "Color + Spatial", "Combined"];
+
+/**
+ * How long SegmentPanel's own closing sequence takes end to end (shrink
+ * 530ms + reform ~895ms + its final opacity fade 450ms -- see
+ * SegmentPanel.tsx's SHRINK_MS/REFORM_MS and its .closing rule) before the
+ * model pickers take its place. Kept as an explicit constant here, in the
+ * same spirit as this codebase's other cross-timing comments, because
+ * there's no way to observe "SegmentPanel's animation finished" from
+ * outside it -- if those constants change, this needs to change with them.
+ */
+const MODEL_SELECT_REVEAL_MS = 1875;
+
+/**
+ * The ROUTNet landing page (Project stuff/UI_page_1.png): pick or capture a
+ * wall image, mark hold segments, adjust lighting/chalk, then hand off to
+ * the recognition step. Talks only to `apiClient` (`@/lib/api`), which is
+ * backed by an in-memory mock until the real backend
+ * (docs/spec/pipeline/interfaces/dashboard-backend.md) exists.
+ */
+export function WallImageWorkspace() {
+  const router = useRouter();
+  const [imageId, setImageId] = useState<string | null>(null);
+  const [imageSrc, setImageSrc] = useState<string | null>(null);
+  const [segments, setSegments] = useState<Segment[]>([]);
+  const [chalkBySegmentId, setChalkBySegmentId] = useState<Record<string, number>>({});
+  const [lighting, setLighting] = useState(0);
+  const [webcamActive, setWebcamActive] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [augmentDone, setAugmentDone] = useState(false);
+  const [toolbarEntered, setToolbarEntered] = useState(false);
+  const [showModelSelect, setShowModelSelect] = useState(false);
+  const [modelSelectEntered, setModelSelectEntered] = useState(false);
+  const [holdModel, setHoldModel] = useState<string | null>(null);
+  const [routeModel, setRouteModel] = useState<string | null>(null);
+
+  // Mount, wait a paint, then trigger -- without the gap there's no
+  // "before" frame for the browser to animate from, so the toolbar's two
+  // pieces would just appear already in place instead of rising in.
+  useEffect(() => {
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => setToolbarEntered(true));
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+  }, []);
+
+  // Once the toolbar and segment panel have both fully finished leaving,
+  // the model pickers take over that same area -- mounted only then (not
+  // shown-but-invisible from the start), so the same "wait a paint, then
+  // trigger" entrance below has a real "before" frame to animate from.
+  useEffect(() => {
+    if (!augmentDone) return;
+    const revealTimeout = setTimeout(() => setShowModelSelect(true), MODEL_SELECT_REVEAL_MS);
+    return () => clearTimeout(revealTimeout);
+  }, [augmentDone]);
+
+  useEffect(() => {
+    if (!showModelSelect) return;
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => setModelSelectEntered(true));
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+  }, [showModelSelect]);
+
+  // Appears the moment either dropdown has a pick -- doesn't wait for both,
+  // per how this was asked for ("once the user selects any of the model").
+  const showRecognitionButton = holdModel !== null || routeModel !== null;
+  const [recognitionEntered, setRecognitionEntered] = useState(false);
+
+  useEffect(() => {
+    if (!showRecognitionButton) {
+      setRecognitionEntered(false);
+      return;
+    }
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => setRecognitionEntered(true));
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+  }, [showRecognitionButton]);
+
+  const loadImage = useCallback(async (file: File | Blob) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const summary = await apiClient.uploadImage(file);
+      const working = await apiClient.setWorkingImage(summary.id);
+      setImageId(working.imageId);
+      setImageSrc(working.image);
+      setSegments([]);
+      setChalkBySegmentId({});
+      setWebcamActive(false);
+      setAugmentDone(false);
+      setShowModelSelect(false);
+      setModelSelectEntered(false);
+      setHoldModel(null);
+      setRouteModel(null);
+    } catch {
+      setError("Couldn't load that image. Try again.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  async function handleAddSegmentPoint(coordinate: Coordinate) {
+    if (!imageId || loading) return;
+    try {
+      const segment = await apiClient.addWorkingSegment([coordinate]);
+      setSegments((prev) => [...prev, segment]);
+      setChalkBySegmentId((prev) => ({ ...prev, [segment.segmentId]: 0 }));
+    } catch {
+      setError("Couldn't add a segment there. Try again.");
+    }
+  }
+
+  function handleChalkChange(segmentId: string, value: number) {
+    setChalkBySegmentId((prev) => ({ ...prev, [segmentId]: value }));
+  }
+
+  async function handleRemoveSegment(segmentId: string) {
+    setSegments((prev) => prev.filter((segment) => segment.segmentId !== segmentId));
+    setChalkBySegmentId((prev) => {
+      const next = { ...prev };
+      delete next[segmentId];
+      return next;
+    });
+    try {
+      await apiClient.deleteWorkingSegment(segmentId);
+    } catch {
+      setError("Segment removed locally, but the backend couldn't confirm it.");
+    }
+  }
+
+  async function handleFinishAugment() {
+    if (!imageId) {
+      setError("Select a wall image first.");
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      await apiClient.augmentWorkingImage({
+        lightingPercent: lighting,
+        segments: segments.map((segment) => ({
+          segmentId: segment.segmentId,
+          chalkPercent: chalkBySegmentId[segment.segmentId] ?? 0,
+        })),
+      });
+      // Stays on this same page -- no navigation. The step indicator shifts
+      // to Recognition (shown as in-progress, not complete -- see
+      // `handingOff` below) and the toolbar/segment panel fade out; nothing
+      // else moves or resizes.
+      setAugmentDone(true);
+    } catch {
+      setError("Couldn't finish augmentation. Try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // Reverses the handoff: the toolbar/segment panel's own CSS transitions
+  // are already bidirectional (removing the class they gained just plays
+  // them backwards), so flipping augmentDone back to false is enough to
+  // bring those back on its own. The model-select panel doesn't have that
+  // built in (it's only ever mounted forward, via showModelSelect), so its
+  // own reverse fade is played here explicitly before unmounting it.
+  function handleBackToAugment() {
+    setAugmentDone(false);
+    if (showModelSelect) {
+      setModelSelectEntered(false);
+      setTimeout(() => setShowModelSelect(false), 550);
+    }
+  }
+
+  return (
+    <div className={styles.workspace}>
+      <AppHeader
+        title="ROUTNet"
+        right={
+          <StepIndicator
+            current="augment"
+            uploaded={!!imageId}
+            augmentDone={augmentDone}
+            handingOff={augmentDone}
+          />
+        }
+      />
+
+      <div className={`${styles.toolbarSlot} ${augmentDone ? styles.leaving : ""}`}>
+        <div className={styles.toolbar}>
+          <div className={`${styles.toolbarItem} ${toolbarEntered ? styles.toolbarItemIn : ""}`}>
+            <ImageSourceButtons
+              webcamActive={webcamActive}
+              disabled={loading}
+              onFileSelected={loadImage}
+              onToggleWebcam={() => {
+                setError(null);
+                setWebcamActive((prev) => !prev);
+              }}
+            />
+          </div>
+          <div
+            className={`${styles.lighting} ${styles.toolbarItem} ${styles.toolbarItemLighting} ${toolbarEntered ? styles.toolbarItemIn : ""}`}
+          >
+            <LabeledSlider label="Lighting" value={lighting} onChange={setLighting} />
+          </div>
+        </div>
+      </div>
+
+      {error && (
+        <p className={styles.error}>
+          <span className={styles.errorDot} aria-hidden />
+          {error}
+        </p>
+      )}
+
+      <div className={styles.mainGrid}>
+        <div className={styles.canvasColumn}>
+          <ImageCanvas
+            imageSrc={imageSrc}
+            lightingPercent={lighting}
+            segments={segments}
+            webcamActive={webcamActive}
+            loading={loading}
+            onCaptureFrame={loadImage}
+            onWebcamError={(message) => {
+              setError(message);
+              setWebcamActive(false);
+            }}
+            onAddSegmentPoint={handleAddSegmentPoint}
+          />
+          <Button
+            type="button"
+            variant="primary"
+            disabled={!imageId || loading}
+            onClick={augmentDone ? handleBackToAugment : handleFinishAugment}
+          >
+            {augmentDone ? "Back to Augment" : "Finish Augment"}
+          </Button>
+        </div>
+
+        <div className={styles.segmentSlot}>
+          <SegmentPanel
+            hasImage={!!imageId}
+            segments={segments}
+            chalkBySegmentId={chalkBySegmentId}
+            onChalkChange={handleChalkChange}
+            onRemove={handleRemoveSegment}
+            closing={augmentDone}
+          />
+
+          {showModelSelect && (
+            <div
+              className={`${styles.modelSelectPanel} ${modelSelectEntered ? styles.modelSelectPanelIn : ""}`}
+            >
+              <div className={styles.modelSelectRow}>
+                <ModelSelect
+                  label="hold model"
+                  options={HOLD_MODEL_OPTIONS}
+                  value={holdModel}
+                  onChange={setHoldModel}
+                />
+                <ModelSelect
+                  label="route model"
+                  options={ROUTE_MODEL_OPTIONS}
+                  value={routeModel}
+                  onChange={setRouteModel}
+                />
+              </div>
+
+              {showRecognitionButton && (
+                <div
+                  className={`${styles.recognitionButtonWrap} ${recognitionEntered ? styles.recognitionButtonWrapIn : ""}`}
+                >
+                  <Button
+                    type="button"
+                    variant="primary"
+                    onClick={() => router.push("/recognition")}
+                  >
+                    Recognition
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

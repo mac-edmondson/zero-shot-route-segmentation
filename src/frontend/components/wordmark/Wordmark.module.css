@@ -1,0 +1,137 @@
+.svg {
+  height: 60px;
+  width: auto;
+  overflow: visible;
+  display: block;
+}
+
+.word {
+  font-family: var(--font-display);
+  /* Courier Prime only ships 400/700 -- pin to a weight that's actually
+     loaded rather than letting the browser fake-bold an in-between value. */
+  font-weight: 700;
+  font-size: 48px;
+  letter-spacing: 0;
+  fill: var(--foreground);
+}
+
+.gradStart {
+  stop-color: var(--accent-strong);
+}
+
+.gradEnd {
+  stop-color: var(--gold);
+}
+
+.startHold {
+  fill: var(--accent-strong);
+  filter: drop-shadow(0 0 1px rgba(255, 219, 173, 0.9)) drop-shadow(0 0 7px rgba(255, 122, 69, 0.75));
+}
+
+.routeLine,
+.routeDashed {
+  fill: none;
+  stroke-width: 2.9;
+  stroke-linecap: round;
+}
+
+/* The glow lives on the <g> that wraps the *already-masked* route paths,
+   not on the paths themselves -- applying a drop-shadow filter and a mask
+   to the same element forces the browser to rasterize them together, and
+   that combination leaves a faint rectangular tint baked into the page
+   background behind whichever letter is being masked (an SVG mask+filter
+   compositing quirk, confirmed by A/B screenshots). Filtering *after* the
+   mask has already produced a clean cutout avoids it entirely, with the
+   same visual glow. */
+.routeGlow {
+  filter: drop-shadow(0 0 1.5px rgba(255, 219, 173, 0.85)) drop-shadow(0 0 7px rgba(255, 122, 69, 0.55))
+    drop-shadow(0 0 14px rgba(255, 207, 122, 0.3));
+}
+
+.routeLine {
+  stroke-linejoin: round;
+  stroke-dasharray: var(--path-length);
+  stroke-dashoffset: var(--path-length);
+  transition: stroke-dashoffset 950ms var(--ease);
+}
+
+.routeIn .routeLine {
+  stroke-dashoffset: 0;
+}
+
+.routeDashed {
+  /* stroke-dasharray is computed and set imperatively (see Wordmark.tsx) so
+     the solid "bridge" at the seam can be measured against the real path
+     length instead of guessed. */
+  opacity: 0;
+  transition: opacity 400ms var(--ease) 720ms;
+}
+
+.routeIn .routeDashed {
+  opacity: 1;
+}
+
+.climber {
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: bottom left;
+  transform: scale(0.5);
+  transition:
+    opacity 320ms var(--ease) 1000ms,
+    transform 320ms var(--ease) 1000ms;
+}
+
+.routeIn .climber {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.climberHead {
+  fill: var(--gold);
+  filter: drop-shadow(0 0 4px rgba(255, 207, 122, 0.75));
+}
+
+.climberLine {
+  fill: none;
+  stroke: var(--gold);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 4px rgba(255, 207, 122, 0.6));
+}
+
+.spark {
+  fill: #fff3e2;
+  filter: blur(0.6px) drop-shadow(0 0 5px var(--gold)) drop-shadow(0 0 9px rgba(255, 122, 69, 0.8));
+  offset-rotate: 0deg;
+  animation: travel 3.4s var(--ease) infinite;
+}
+
+@keyframes travel {
+  0% {
+    offset-distance: 0%;
+    opacity: 0;
+  }
+  8% {
+    opacity: 1;
+  }
+  88% {
+    opacity: 1;
+  }
+  100% {
+    offset-distance: 100%;
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .routeLine,
+  .routeDashed,
+  .climber {
+    transition-duration: 0s;
+    transition-delay: 0s;
+  }
+
+  .spark {
+    display: none;
+  }
+}
