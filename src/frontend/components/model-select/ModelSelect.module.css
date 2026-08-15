@@ -1,0 +1,146 @@
+.root {
+  position: relative;
+  width: 100%;
+}
+
+.trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  background: var(--surface);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 0.75rem 1rem;
+  font-size: 0.88rem;
+  font-family: inherit;
+  color: var(--foreground);
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition:
+    background-color var(--dur) var(--ease),
+    border-color var(--dur) var(--ease),
+    box-shadow var(--dur) var(--ease);
+}
+
+.trigger:hover {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+}
+
+.triggerOpen {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  box-shadow: var(--shadow-accent);
+}
+
+.triggerPlaceholder {
+  color: var(--muted);
+}
+
+.triggerValue {
+  color: var(--foreground);
+  font-weight: 500;
+}
+
+.chevron {
+  flex-shrink: 0;
+  color: var(--muted-2);
+  transition:
+    transform var(--dur) var(--ease),
+    color var(--dur) var(--ease);
+}
+
+.triggerOpen .chevron {
+  color: var(--accent-text);
+  transform: rotate(180deg);
+}
+
+/* The classic grid-template-rows 1fr -> 0fr trick (see StepIndicator/
+   WallImageWorkspace for the same technique) -- a plain height/max-height
+   transition can't animate to/from "auto" cleanly, and the menu's content
+   height depends on how many options it has. */
+.menuOuter {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  left: 0;
+  right: 0;
+  z-index: 5;
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition:
+    grid-template-rows 320ms var(--ease),
+    opacity 260ms var(--ease),
+    transform 320ms var(--ease);
+  pointer-events: none;
+}
+
+.menuOuterOpen {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+/* The part of the grid item that actually gets clipped as the row
+   collapses -- kept free of its own padding/border so the row can shrink
+   to a genuine 0px rather than flooring out at the menu's own box model
+   minimum (harmless while opacity is 0, but not a *clean* collapse). */
+.menuInner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.menu {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  /* Fully solid, no backdrop-filter -- unlike the static glass surfaces
+     elsewhere, this floats over real sibling content (the other
+     dropdown, stacked right below it), not just the decorative
+     background. backdrop-filter blurs whatever's behind *before* the
+     background paints over it, so even a background at 97% opacity still
+     let a faint ghost of that sibling bleed through; this needs to read
+     as fully elevated instead. */
+  background: #121018;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  padding: 0.35rem;
+}
+
+.option {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 0.55rem 0.7rem;
+  font-size: 0.86rem;
+  font-family: inherit;
+  color: var(--foreground);
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+}
+
+.option:hover {
+  background: var(--surface-2);
+}
+
+.optionSelected {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menuOuter {
+    transition-duration: 0s;
+  }
+}

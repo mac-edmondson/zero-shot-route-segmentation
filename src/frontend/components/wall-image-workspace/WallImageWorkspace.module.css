@@ -13,30 +13,29 @@
   overflow: hidden;
 }
 
-/* Collapses the toolbar's row height to 0 (rather than just fading it in
-   place) once the handoff to recognition starts, so the layout doesn't
-   leave a dead gap where it used to sit -- grid-template-rows 1fr -> 0fr
-   is the standard trick for smoothly animating a block to/from "auto"
-   height, which plain height/max-height transitions can't do cleanly. */
+/* Fades and shrinks slightly in place -- same "kind" of exit as the
+   segment panel's own closing animation (a settle toward a smaller,
+   fading version of itself), just without the character/hold mechanics
+   that only make sense for that component. The toolbar's own box keeps
+   its normal space reserved throughout -- nothing else in the layout
+   moves or resizes when this leaves, only this element's own visibility
+   changes. */
 .toolbarSlot {
   flex-shrink: 0;
-  display: grid;
-  grid-template-rows: 1fr;
   opacity: 1;
+  filter: blur(0);
+  transform: scale(1);
   transition:
-    grid-template-rows 600ms cubic-bezier(0.45, 0, 0.15, 1),
-    opacity 420ms var(--ease);
+    opacity 450ms var(--ease),
+    filter 450ms var(--ease),
+    transform 450ms cubic-bezier(0.45, 0, 0.15, 1);
 }
 
 .toolbarSlot.leaving {
-  grid-template-rows: 0fr;
   opacity: 0;
+  filter: blur(4px);
+  transform: scale(0.94);
   pointer-events: none;
-}
-
-.toolbarSlot > .toolbar {
-  min-height: 0;
-  overflow: hidden;
 }
 
 .toolbar {
@@ -53,6 +52,31 @@
   border-radius: var(--radius-lg);
   padding: 0.85rem 1.25rem;
   box-shadow: var(--shadow-sm);
+}
+
+/* The toolbar's entrance -- its two pieces rise and clear into place
+   rather than just appearing, with the lighting slider following the
+   source buttons by a beat so it reads as a small cascade rather than
+   one flat block. A slight overshoot on the way in (same spring feel as
+   the segment panel's own reform/pop moments) gives it a bit of life. */
+.toolbarItem {
+  opacity: 0;
+  filter: blur(6px);
+  transform: translateY(-14px) scale(0.96);
+  transition:
+    opacity 550ms var(--ease),
+    filter 550ms var(--ease),
+    transform 550ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.toolbarItemLighting {
+  transition-delay: 130ms;
+}
+
+.toolbarItemIn {
+  opacity: 1;
+  filter: blur(0);
+  transform: translateY(0) scale(1);
 }
 
 .lighting {
@@ -81,23 +105,19 @@
   flex-shrink: 0;
 }
 
-/* flex, not grid: the segment sidebar needs to smoothly shrink its own
-   track to 0 during the handoff to recognition (see .segmentSlot below)
-   with the canvas column fluidly reflowing to fill the freed space as it
-   goes -- flex-basis is natively transitionable and a flex:1 sibling
-   naturally absorbs the change frame by frame, where a grid-template-
-   columns swap would just snap. */
 .mainGrid {
   flex: 1;
   min-height: 0;
-  display: flex;
+  display: grid;
+  /* Fixed tracks -- the canvas column's size never depends on whether the
+     segment sidebar is currently showing or fading out, so finishing
+     augmentation never makes the wall image resize. */
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 420px);
   gap: 1.5rem;
   align-items: stretch;
 }
 
 .canvasColumn {
-  flex: 1;
-  min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -105,42 +125,86 @@
   gap: 1rem;
 }
 
-/* The segment sidebar's own track: capped like before, but now a track
-   this component can also collapse smoothly to 0 -- see .leaving. */
+/* Just a fixed-size slot -- SegmentPanel handles its own closing
+   animation internally (see its `closing` prop), so this wrapper only
+   needs to keep the sidebar's grid track reserved at a constant size;
+   nothing next to it should ever move or resize. display: grid with both
+   children sharing the same cell (see globally-used "stack in one grid
+   cell" technique) lets the model-select panel take over the exact same
+   footprint SegmentPanel occupied, once it's ready to. */
 .segmentSlot {
-  flex: 0 1 420px;
-  min-width: 260px;
   min-height: 0;
-  overflow: hidden;
-  opacity: 1;
-  transform: translateX(0) scale(1);
-  transition:
-    flex-basis 600ms cubic-bezier(0.45, 0, 0.15, 1),
-    min-width 600ms cubic-bezier(0.45, 0, 0.15, 1),
-    opacity 420ms var(--ease),
-    transform 420ms var(--ease);
+  display: grid;
 }
 
-.segmentSlot.leaving {
-  flex-basis: 0px;
-  min-width: 0px;
+.segmentSlot > * {
+  grid-area: 1 / 1;
+  min-height: 0;
+  min-width: 0;
+}
+
+/* Takes over the segment sidebar's spot once SegmentPanel has fully
+   finished leaving (see MODEL_SELECT_REVEAL_MS) -- same rise+fade+blur
+   entrance vocabulary as the toolbar's own pieces above, for a consistent
+   "something new has arrived here" feel. */
+.modelSelectPanel {
+  align-self: center;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding: 0 0.25rem;
   opacity: 0;
-  transform: translateX(24px) scale(0.96);
-  pointer-events: none;
+  filter: blur(6px);
+  transform: translateY(14px) scale(0.97);
+  transition:
+    opacity 550ms var(--ease),
+    filter 550ms var(--ease),
+    transform 550ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* The two pickers side by side -- "one after the other", not stacked. */
+.modelSelectRow {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.modelSelectRow > * {
+  flex: 1;
+  min-width: 0;
+}
+
+/* The Recognition button's own entrance, once either picker has a value --
+   same rise+fade+blur+spring vocabulary again, mounted only once shown so
+   it always has a real "before" frame to animate from. */
+.recognitionButtonWrap {
+  opacity: 0;
+  filter: blur(6px);
+  transform: translateY(10px) scale(0.96);
+  transition:
+    opacity 480ms var(--ease),
+    filter 480ms var(--ease),
+    transform 480ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.recognitionButtonWrap > button {
+  width: 100%;
+}
+
+.recognitionButtonWrapIn {
+  opacity: 1;
+  filter: blur(0);
+  transform: translateY(0) scale(1);
+}
+
+.modelSelectPanelIn {
+  opacity: 1;
+  filter: blur(0);
+  transform: translateY(0) scale(1);
 }
 
 @media (max-width: 760px) {
   .mainGrid {
-    flex-direction: column;
-  }
-
-  .segmentSlot {
-    flex-basis: auto;
-    min-width: 0;
-  }
-
-  .segmentSlot.leaving {
-    flex-basis: 0px;
+    grid-template-columns: 1fr;
   }
 }
 
@@ -164,11 +228,21 @@
   .canvasColumn {
     gap: 0.75rem;
   }
+
+  /* Side by side is too cramped at this width for text like "Select route
+     model" -- falls back to stacked here, same as it was before this was
+     asked for a wider row layout. */
+  .modelSelectRow {
+    flex-direction: column;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .toolbarSlot,
-  .segmentSlot {
+  .toolbarItem,
+  .modelSelectPanel,
+  .recognitionButtonWrap {
     transition-duration: 0s;
+    transition-delay: 0s;
   }
 }

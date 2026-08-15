@@ -12,6 +12,14 @@ interface SegmentPanelProps {
   chalkBySegmentId: Record<string, number>;
   onChalkChange: (segmentId: string, value: number) => void;
   onRemove: (segmentId: string) => void;
+  /**
+   * True once the parent is wrapping up and this panel should play its
+   * exit -- reuses the exact same shrink-to-a-hold-then-reform sequence as
+   * removing the last segment (the real `segments` data underneath is
+   * untouched; only the *display* treats the count as 0 while this is
+   * set), then fades the whole panel away once that settles.
+   */
+  closing?: boolean;
 }
 
 type Phase = "empty" | "prompt" | "collapse" | "expand" | "panel" | "shrink" | "reform";
@@ -224,11 +232,23 @@ export function SegmentPanel({
   chalkBySegmentId,
   onChalkChange,
   onRemove,
+  closing = false,
 }: SegmentPanelProps) {
   // "empty"/"prompt"/"panel" are plain functions of the props -- no effect
   // needed. Only the transient collapse/expand/shrink/reform sequence is
   // genuinely timer-driven, so it's the only thing that lives in state.
-  const restingPhase: Phase = !hasImage ? "empty" : segments.length === 0 ? "prompt" : "panel";
+  // `closing` forces the display count to 0 regardless of the real
+  // `segments` array -- from this component's point of view that's
+  // indistinguishable from the user having removed the last segment
+  // themselves, so it naturally falls into the exact same shrink/reform
+  // sequence below without needing a separate code path. Both this and
+  // `restingPhase` below have to agree on that override -- otherwise the
+  // moment the reform sequence finishes, `restingPhase` would fall back
+  // to judging the *real* segment count again and pop the panel straight
+  // back to "panel" (full circle, real cards) right as it's meant to be
+  // settling into the closing fade.
+  const currentCount = closing ? 0 : hasImage ? segments.length : 0;
+  const restingPhase: Phase = !hasImage ? "empty" : currentCount === 0 ? "prompt" : "panel";
   const [sequencePhase, setSequencePhase] = useState<SequencePhase>(null);
   const [circlePop, setCirclePop] = useState(false);
   const [textActive, setTextActive] = useState(false);
@@ -247,7 +267,6 @@ export function SegmentPanel({
   // instead of shrinking. Doing it here means the very first render
   // after the prop change already has the right phase, so the circle
   // element itself never actually disappears from the tree.
-  const currentCount = hasImage ? segments.length : 0;
   const [prevRenderedCount, setPrevRenderedCount] = useState(currentCount);
   // Once any collapse/reform sequence has ever run, the resting "prompt"
   // display switches from SwappableMessage to DrainingMessage's own settled
@@ -289,6 +308,13 @@ export function SegmentPanel({
   }, [sequencePhase]);
 
   const phase: Phase = sequencePhase ?? restingPhase;
+
+  // Only once the shrink/reform sequence has fully settled (sequencePhase
+  // back to null) does the panel itself fade away -- waiting for that
+  // keeps the two animations sequential rather than the fade racing the
+  // reform. If there was nothing to shrink from (already resting empty),
+  // sequencePhase is null right away and this fades immediately instead.
+  const showClosingFade = closing && sequencePhase === null;
 
   // The circle mounts at 0x0 first, then -- one paint later -- gets the
   // class that transitions it to visible. Without that gap there's no
@@ -351,7 +377,10 @@ export function SegmentPanel({
     .join(" ");
 
   return (
-    <aside ref={panelRef} className={styles.panel}>
+    <aside
+      ref={panelRef}
+      className={`${styles.panel} ${showClosingFade ? styles.closing : ""}`}
+    >
       {phase === "collapse" || phase === "reform" ? (
         <DrainingMessage
           text={PROMPT_TEXT}

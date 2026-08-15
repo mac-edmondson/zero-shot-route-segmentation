@@ -7,6 +7,18 @@
   justify-content: center;
 }
 
+/* The panel's own final exit, once `closing` is set and the shrink/reform
+   sequence above has fully settled -- a plain fade+blur, same treatment
+   as the toolbar's exit in WallImageWorkspace so the two read as a pair. */
+.closing {
+  transition:
+    opacity 450ms var(--ease),
+    filter 450ms var(--ease);
+  opacity: 0;
+  filter: blur(4px);
+  pointer-events: none;
+}
+
 .message {
   position: relative;
   z-index: 1;
@@ -257,7 +269,8 @@
   .morphVisible,
   .morphExpanded,
   .morphShrinking,
-  .content {
+  .content,
+  .closing {
     transition-duration: 0s;
     animation-duration: 0.01ms;
   }
