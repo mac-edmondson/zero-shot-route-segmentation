@@ -10,6 +10,15 @@ interface StepIndicatorProps {
   augmentDone: boolean;
   /** Which page is actually being viewed -- only affects which lit node pulses as "active". */
   current: "augment" | "recognition";
+  /**
+   * True for the brief handoff window on the augment page itself, right
+   * after "Finish Augment" succeeds but before the recognition step is
+   * actually reached -- shows Recognition as in-progress (half-filled)
+   * rather than snapping straight to fully complete before the user's
+   * even there. Ignored once `current` is "recognition" (it's simply
+   * "active" at that point).
+   */
+  handingOff?: boolean;
 }
 
 type NodeState = "locked" | "inProgress" | "complete" | "active";
@@ -85,14 +94,16 @@ function Connector({ state }: { state: NodeState }) {
  * distinct "in progress" look (a half-filled hold) while the user is
  * actively working with an image but hasn't finished augmenting yet.
  */
-export function StepIndicator({ uploaded, augmentDone, current }: StepIndicatorProps) {
+export function StepIndicator({ uploaded, augmentDone, current, handingOff }: StepIndicatorProps) {
   const uploadState: NodeState = uploaded ? "complete" : "locked";
   const augmentState: NodeState = !uploaded ? "locked" : augmentDone ? "complete" : "inProgress";
   const recognitionState: NodeState = !augmentDone
     ? "locked"
     : current === "recognition"
       ? "active"
-      : "complete";
+      : handingOff
+        ? "inProgress"
+        : "complete";
 
   return (
     <div className={styles.pill}>

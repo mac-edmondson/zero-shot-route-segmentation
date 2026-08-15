@@ -13,6 +13,32 @@
   overflow: hidden;
 }
 
+/* Collapses the toolbar's row height to 0 (rather than just fading it in
+   place) once the handoff to recognition starts, so the layout doesn't
+   leave a dead gap where it used to sit -- grid-template-rows 1fr -> 0fr
+   is the standard trick for smoothly animating a block to/from "auto"
+   height, which plain height/max-height transitions can't do cleanly. */
+.toolbarSlot {
+  flex-shrink: 0;
+  display: grid;
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transition:
+    grid-template-rows 600ms cubic-bezier(0.45, 0, 0.15, 1),
+    opacity 420ms var(--ease);
+}
+
+.toolbarSlot.leaving {
+  grid-template-rows: 0fr;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.toolbarSlot > .toolbar {
+  min-height: 0;
+  overflow: hidden;
+}
+
 .toolbar {
   flex-shrink: 0;
   display: flex;
@@ -55,19 +81,23 @@
   flex-shrink: 0;
 }
 
+/* flex, not grid: the segment sidebar needs to smoothly shrink its own
+   track to 0 during the handoff to recognition (see .segmentSlot below)
+   with the canvas column fluidly reflowing to fill the freed space as it
+   goes -- flex-basis is natively transitionable and a flex:1 sibling
+   naturally absorbs the change frame by frame, where a grid-template-
+   columns swap would just snap. */
 .mainGrid {
   flex: 1;
   min-height: 0;
-  display: grid;
-  /* The canvas column absorbs extra width as the workspace grows; the
-     segment sidebar is useful but not content-heavy, so it's capped
-     instead of stretching into a wide empty-looking rail. */
-  grid-template-columns: minmax(0, 1fr) minmax(260px, 420px);
+  display: flex;
   gap: 1.5rem;
   align-items: stretch;
 }
 
 .canvasColumn {
+  flex: 1;
+  min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -75,9 +105,42 @@
   gap: 1rem;
 }
 
+/* The segment sidebar's own track: capped like before, but now a track
+   this component can also collapse smoothly to 0 -- see .leaving. */
+.segmentSlot {
+  flex: 0 1 420px;
+  min-width: 260px;
+  min-height: 0;
+  overflow: hidden;
+  opacity: 1;
+  transform: translateX(0) scale(1);
+  transition:
+    flex-basis 600ms cubic-bezier(0.45, 0, 0.15, 1),
+    min-width 600ms cubic-bezier(0.45, 0, 0.15, 1),
+    opacity 420ms var(--ease),
+    transform 420ms var(--ease);
+}
+
+.segmentSlot.leaving {
+  flex-basis: 0px;
+  min-width: 0px;
+  opacity: 0;
+  transform: translateX(24px) scale(0.96);
+  pointer-events: none;
+}
+
 @media (max-width: 760px) {
   .mainGrid {
-    grid-template-columns: 1fr;
+    flex-direction: column;
+  }
+
+  .segmentSlot {
+    flex-basis: auto;
+    min-width: 0;
+  }
+
+  .segmentSlot.leaving {
+    flex-basis: 0px;
   }
 }
 
@@ -100,5 +163,12 @@
 
   .canvasColumn {
     gap: 0.75rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toolbarSlot,
+  .segmentSlot {
+    transition-duration: 0s;
   }
 }

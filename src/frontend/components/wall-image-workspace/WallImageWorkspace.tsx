@@ -13,8 +13,14 @@ import { Button } from "@/components/button/Button";
 import { StepIndicator } from "@/components/step-indicator/StepIndicator";
 import styles from "./WallImageWorkspace.module.css";
 
-/** How long the step indicator's unlock pop plays before we navigate away. */
-const UNLOCK_ANIMATION_MS = 650;
+/**
+ * How long the handoff to recognition plays before we navigate away: the
+ * step indicator's own unlock pop, and the toolbar/segment-panel collapse
+ * below, both run inside this window (see .toolbarSlot / .segmentSlot in
+ * the stylesheet -- kept in lockstep with this the same way SegmentPanel's
+ * own JS timers stay in lockstep with its CSS transition durations).
+ */
+const HANDOFF_MS = 600;
 
 function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -103,11 +109,13 @@ export function WallImageWorkspace() {
           chalkPercent: chalkBySegmentId[segment.segmentId] ?? 0,
         })),
       });
-      // Let the step indicator's unlock pop play before navigating away --
-      // a small payoff for the click, separate from whatever transition
-      // animation carries the user into the recognition step itself.
+      // The page itself doesn't jump anywhere yet: the step indicator shifts
+      // to Recognition (shown as in-progress, not complete -- see
+      // `handingOff` below) while the toolbar and segment panel collapse
+      // away, leaving just the wall image and the header in place. Only
+      // once that's played out do we actually navigate.
       setAugmentDone(true);
-      await wait(UNLOCK_ANIMATION_MS);
+      await wait(HANDOFF_MS);
       router.push("/recognition");
     } catch {
       setError("Couldn't finish augmentation. Try again.");
@@ -121,22 +129,29 @@ export function WallImageWorkspace() {
       <AppHeader
         title="ROUTNet"
         right={
-          <StepIndicator current="augment" uploaded={!!imageId} augmentDone={augmentDone} />
+          <StepIndicator
+            current="augment"
+            uploaded={!!imageId}
+            augmentDone={augmentDone}
+            handingOff={augmentDone}
+          />
         }
       />
 
-      <div className={styles.toolbar}>
-        <ImageSourceButtons
-          webcamActive={webcamActive}
-          disabled={loading}
-          onFileSelected={loadImage}
-          onToggleWebcam={() => {
-            setError(null);
-            setWebcamActive((prev) => !prev);
-          }}
-        />
-        <div className={styles.lighting}>
-          <LabeledSlider label="Lighting" value={lighting} onChange={setLighting} />
+      <div className={`${styles.toolbarSlot} ${augmentDone ? styles.leaving : ""}`}>
+        <div className={styles.toolbar}>
+          <ImageSourceButtons
+            webcamActive={webcamActive}
+            disabled={loading}
+            onFileSelected={loadImage}
+            onToggleWebcam={() => {
+              setError(null);
+              setWebcamActive((prev) => !prev);
+            }}
+          />
+          <div className={styles.lighting}>
+            <LabeledSlider label="Lighting" value={lighting} onChange={setLighting} />
+          </div>
         </div>
       </div>
 
@@ -172,13 +187,15 @@ export function WallImageWorkspace() {
           </Button>
         </div>
 
-        <SegmentPanel
-          hasImage={!!imageId}
-          segments={segments}
-          chalkBySegmentId={chalkBySegmentId}
-          onChalkChange={handleChalkChange}
-          onRemove={handleRemoveSegment}
-        />
+        <div className={`${styles.segmentSlot} ${augmentDone ? styles.leaving : ""}`}>
+          <SegmentPanel
+            hasImage={!!imageId}
+            segments={segments}
+            chalkBySegmentId={chalkBySegmentId}
+            onChalkChange={handleChalkChange}
+            onRemove={handleRemoveSegment}
+          />
+        </div>
       </div>
     </div>
   );
