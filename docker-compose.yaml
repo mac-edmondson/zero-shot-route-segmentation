@@ -14,7 +14,12 @@ services:
         source: ${GALLERY_PATH}
         target: /gallery
         read_only: true
+        bind:
+          selinux: Z
 
+    depends_on:
+      - backend
+      - frontend
   frontend:
     build:
       context: ./src/frontend
