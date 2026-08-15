@@ -1,5 +1,14 @@
-import { request } from "./client";
+import { request, requestBlob } from "./client";
 import type { RouteDetectionApiClient } from "./contract";
+import type { Coordinate, GalleryImage, Segment } from "./types";
+
+/** Wire shape returned by `POST /image/working/segments` (src/backend/schemas.py). */
+interface DetectSegmentsResponse {
+  segments: {
+    segment_id: string;
+    polygon: { points: Coordinate[] };
+  }[];
+}
 
 /**
  * Real REST implementation of {@link RouteDetectionApiClient}, matching the
@@ -31,10 +40,26 @@ export const restApiClient: RouteDetectionApiClient = {
     return request("/image/working", { method: "PUT", body: { imageId } });
   },
 
-  addWorkingSegment(coordinates) {
-    return request("/image/working/segment", {
-      method: "POST",
-      body: { coordinates },
+  async detectWorkingSegments(image, coordinates) {
+    const form = new FormData();
+    form.append("image", image);
+    form.append("all_points_x", JSON.stringify(coordinates.map((c) => c.x)));
+    form.append("all_points_y", JSON.stringify(coordinates.map((c) => c.y)));
+
+    const { segments } = await request<DetectSegmentsResponse>(
+      "/image/working/segments",
+      { method: "POST", body: form },
+    );
+
+    // Backend returns one polygon per input point, in the same order --
+    // zip back up with the coordinate that produced each one.
+    return segments.map((segment, index) => {
+      const point = coordinates[index];
+      return {
+        segmentId: segment.segment_id,
+        coordinates: point ? [point] : [],
+        polygon: segment.polygon.points,
+      } satisfies Segment;
     });
   },
 
@@ -56,5 +81,14 @@ export const restApiClient: RouteDetectionApiClient = {
 
   setPipeline(config) {
     return request("/pipeline", { method: "PUT", body: config });
+  },
+
+  async listGalleryImages(signal) {
+    const { images } = await request<{ images: GalleryImage[] }>("/gallery/images", { signal });
+    return images;
+  },
+
+  fetchGalleryImage(name) {
+    return requestBlob(`/gallery/images/${encodeURIComponent(name)}`);
   },
 };

@@ -6,6 +6,7 @@ import { apiClient } from "@/lib/api";
 import type { Coordinate, Segment } from "@/lib/api";
 import { AppHeader } from "@/components/header/AppHeader";
 import { ImageSourceButtons } from "@/components/image-source-buttons/ImageSourceButtons";
+import { GalleryPicker } from "@/components/gallery-picker/GalleryPicker";
 import { ImageCanvas } from "@/components/image-canvas/ImageCanvas";
 import { SegmentPanel } from "@/components/segment-panel/SegmentPanel";
 import { LabeledSlider } from "@/components/labeled-slider/LabeledSlider";
@@ -39,10 +40,18 @@ export function WallImageWorkspace() {
   const router = useRouter();
   const [imageId, setImageId] = useState<string | null>(null);
   const [imageSrc, setImageSrc] = useState<string | null>(null);
+  /** Original image bytes, kept around so a detect call can send the whole
+   * image again -- the backend is stateless and never stores it. */
+  const [imageFile, setImageFile] = useState<File | Blob | null>(null);
   const [segments, setSegments] = useState<Segment[]>([]);
+  /** Points clicked but not yet sent for detection. */
+  const [pendingPoints, setPendingPoints] = useState<Coordinate[]>([]);
+  const [detecting, setDetecting] = useState(false);
   const [chalkBySegmentId, setChalkBySegmentId] = useState<Record<string, number>>({});
   const [lighting, setLighting] = useState(0);
   const [webcamActive, setWebcamActive] = useState(false);
+  const [galleryOpen, setGalleryOpen] = useState(false);
+  const [gallerySelecting, setGallerySelecting] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [augmentDone, setAugmentDone] = useState(false);
@@ -116,7 +125,9 @@ export function WallImageWorkspace() {
       const working = await apiClient.setWorkingImage(summary.id);
       setImageId(working.imageId);
       setImageSrc(working.image);
+      setImageFile(file);
       setSegments([]);
+      setPendingPoints([]);
       setChalkBySegmentId({});
       setWebcamActive(false);
       setAugmentDone(false);
@@ -131,14 +142,42 @@ export function WallImageWorkspace() {
     }
   }, []);
 
-  async function handleAddSegmentPoint(coordinate: Coordinate) {
-    if (!imageId || loading) return;
+  async function handleGallerySelect(name: string) {
+    setGallerySelecting(true);
+    setError(null);
     try {
-      const segment = await apiClient.addWorkingSegment([coordinate]);
-      setSegments((prev) => [...prev, segment]);
-      setChalkBySegmentId((prev) => ({ ...prev, [segment.segmentId]: 0 }));
+      const blob = await apiClient.fetchGalleryImage(name);
+      await loadImage(blob);
+      setGalleryOpen(false);
     } catch {
-      setError("Couldn't add a segment there. Try again.");
+      setError("Couldn't load that gallery image. Try again.");
+    } finally {
+      setGallerySelecting(false);
+    }
+  }
+
+  function handleAddSegmentPoint(coordinate: Coordinate) {
+    if (!imageId || loading || detecting) return;
+    setPendingPoints((prev) => [...prev, coordinate]);
+  }
+
+  async function handleDetectSegments() {
+    if (!imageId || !imageFile || pendingPoints.length === 0) return;
+    setDetecting(true);
+    setError(null);
+    try {
+      const detected = await apiClient.detectWorkingSegments(imageFile, pendingPoints);
+      setSegments((prev) => [...prev, ...detected]);
+      setChalkBySegmentId((prev) => {
+        const next = { ...prev };
+        for (const segment of detected) next[segment.segmentId] = 0;
+        return next;
+      });
+      setPendingPoints([]);
+    } catch {
+      setError("Couldn't detect holds there. Try again.");
+    } finally {
+      setDetecting(false);
     }
   }
 
@@ -226,6 +265,10 @@ export function WallImageWorkspace() {
                 setError(null);
                 setWebcamActive((prev) => !prev);
               }}
+              onOpenGallery={() => {
+                setError(null);
+                setGalleryOpen(true);
+              }}
             />
           </div>
           <div
@@ -249,8 +292,9 @@ export function WallImageWorkspace() {
             imageSrc={imageSrc}
             lightingPercent={lighting}
             segments={segments}
+            pendingPoints={pendingPoints}
             webcamActive={webcamActive}
-            loading={loading}
+            loading={loading || detecting}
             onCaptureFrame={loadImage}
             onWebcamError={(message) => {
               setError(message);
@@ -258,6 +302,14 @@ export function WallImageWorkspace() {
             }}
             onAddSegmentPoint={handleAddSegmentPoint}
           />
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={!imageId || pendingPoints.length === 0 || detecting}
+            onClick={handleDetectSegments}
+          >
+            {detecting ? "Detecting…" : `Detect Holds${pendingPoints.length > 0 ? ` (${pendingPoints.length})` : ""}`}
+          </Button>
           <Button
             type="button"
             variant="primary"
@@ -314,6 +366,14 @@ export function WallImageWorkspace() {
           )}
         </div>
       </div>
+
+      {galleryOpen && (
+        <GalleryPicker
+          onClose={() => setGalleryOpen(false)}
+          onSelect={handleGallerySelect}
+          selecting={gallerySelecting}
+        />
+      )}
     </div>
   );
 }

@@ -40,3 +40,23 @@ export async function request<T>(
 
   return (await response.json()) as T;
 }
+
+/** Like {@link request}, but for endpoints that return raw bytes (e.g. an
+ * image) rather than JSON -- used for the gallery image proxy. */
+export async function requestBlob(
+  path: string,
+  { signal }: { signal?: AbortSignal } = {},
+): Promise<Blob> {
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, { signal });
+  } catch {
+    throw new ApiError(`Failed to reach backend at ${API_BASE_URL}${path}`);
+  }
+
+  if (!response.ok) {
+    throw new ApiError(`Request to ${path} failed with ${response.status}`, response.status);
+  }
+
+  return response.blob();
+}

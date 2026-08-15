@@ -10,6 +10,8 @@ interface ImageCanvasProps {
   /** 0-100. Previewed live on the image via a brightness filter; 0 is unmodified. */
   lightingPercent: number;
   segments: Segment[];
+  /** Points clicked but not yet submitted for detection. */
+  pendingPoints: Coordinate[];
   webcamActive: boolean;
   loading: boolean;
   onCaptureFrame: (blob: Blob) => void;
@@ -29,6 +31,7 @@ export function ImageCanvas({
   imageSrc,
   lightingPercent,
   segments,
+  pendingPoints,
   webcamActive,
   loading,
   onCaptureFrame,
@@ -125,6 +128,22 @@ export function ImageCanvas({
             style={{ filter: `brightness(${1 + (lightingPercent / 100) * 0.9})` }}
             onClick={handleImageClick}
           />
+          {segments.length > 0 && (
+            <svg
+              className={styles.polygonOverlay}
+              viewBox="0 0 1 1"
+              preserveAspectRatio="none"
+              aria-hidden
+            >
+              {segments.map((segment) => (
+                <polygon
+                  key={segment.segmentId}
+                  className={styles.polygonShape}
+                  points={segment.polygon.map((p) => `${p.x},${p.y}`).join(" ")}
+                />
+              ))}
+            </svg>
+          )}
           {segments.map((segment, index) => {
             const point = segment.coordinates[0];
             if (!point) return null;
@@ -138,6 +157,13 @@ export function ImageCanvas({
               </span>
             );
           })}
+          {pendingPoints.map((point, index) => (
+            <span
+              key={`pending-${index}`}
+              className={styles.pendingMarker}
+              style={{ left: `${point.x * 100}%`, top: `${point.y * 100}%` }}
+            />
+          ))}
           {loading && (
             <div className={styles.overlay}>
               <span className={styles.spinner} aria-hidden />
