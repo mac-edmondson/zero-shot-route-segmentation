@@ -10,6 +10,14 @@ subject to CORS. Displaying a thumbnail is a different story -- a plain
 <img src="https://...">  works cross-origin with no proxy needed, which is
 why GalleryImage.url below points straight at the external server rather
 than through us.
+
+The server's root path (IMAGE_GALLERY_PATH) is itself a directory of
+*categories* ("bh", "bh-phone", "model", "sm", ...), each holding hundreds to
+thousands of images -- listing every image across every category in one shot
+is what made the old flat picker heavy. So this proxies two listing levels:
+categories first (/gallery/categories), then images within one category
+(/gallery/images?category=...), picked by the user before anything image-
+sized gets fetched.
 """
 
 from __future__ import annotations
@@ -18,10 +26,15 @@ import os
 import re
 
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import Response
 
-from .schemas import GalleryImage, GalleryListResponse
+from .schemas import (
+    GalleryCategoriesResponse,
+    GalleryCategory,
+    GalleryImage,
+    GalleryListResponse,
+)
 
 router = APIRouter(prefix="/gallery")
 
@@ -30,9 +43,11 @@ router = APIRouter(prefix="/gallery")
 # fails at request time with a clear error rather than baking in a stale
 # value at import time.
 _DEFAULT_BASE_URL = "https://cvp.iamemacs.com"
-_DEFAULT_PATH = "/api/images/bh"
+# The categories root -- NOT a specific category. See module docstring.
+_DEFAULT_PATH = "/api/images"
 
 _SAFE_NAME = re.compile(r"^[A-Za-z0-9_.-]+$")
+_IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp")
 
 
 def _base_url() -> str:
@@ -43,42 +58,69 @@ def _path() -> str:
     return "/" + os.environ.get("IMAGE_GALLERY_PATH", _DEFAULT_PATH).strip("/")
 
 
-def _listing_url() -> str:
+def _categories_url() -> str:
     return f"{_base_url()}{_path()}/"
 
 
-def _image_url(name: str) -> str:
-    return f"{_base_url()}{_path()}/{name}"
+def _category_listing_url(category: str) -> str:
+    return f"{_base_url()}{_path()}/{category}/"
 
 
-@router.get("/images", response_model=GalleryListResponse)
-async def list_gallery_images() -> GalleryListResponse:
+def _image_url(category: str, name: str) -> str:
+    return f"{_base_url()}{_path()}/{category}/{name}"
+
+
+async def _fetch_json(url: str) -> list[dict]:
     async with httpx.AsyncClient() as client:
         try:
-            response = await client.get(_listing_url(), timeout=10.0)
+            response = await client.get(url, timeout=10.0)
             response.raise_for_status()
         except httpx.HTTPError as exc:
             raise HTTPException(
                 status_code=502, detail=f"Couldn't reach gallery server: {exc}"
             ) from exc
+    return response.json()
 
-    entries = response.json()
+
+@router.get("/categories", response_model=GalleryCategoriesResponse)
+async def list_gallery_categories() -> GalleryCategoriesResponse:
+    entries = await _fetch_json(_categories_url())
+    categories = [
+        GalleryCategory(name=entry["name"])
+        for entry in entries
+        if entry.get("type") == "directory"
+    ]
+    return GalleryCategoriesResponse(categories=categories)
+
+
+@router.get("/images", response_model=GalleryListResponse)
+async def list_gallery_images(
+    category: str = Query(..., description="Category name from /gallery/categories"),
+) -> GalleryListResponse:
+    if not _SAFE_NAME.match(category):
+        raise HTTPException(status_code=400, detail="Invalid category name")
+
+    entries = await _fetch_json(_category_listing_url(category))
     images = [
-        GalleryImage(name=entry["name"], url=_image_url(entry["name"]))
+        GalleryImage(name=entry["name"], category=category, url=_image_url(category, entry["name"]))
         for entry in entries
         if entry.get("type") == "file"
+        # Some categories (e.g. "model") hold non-image artifacts alongside
+        # or instead of photos -- skip those rather than handing the picker
+        # a tile that can never render as an <img>.
+        and entry["name"].lower().endswith(_IMAGE_EXTENSIONS)
     ]
     return GalleryListResponse(images=images)
 
 
-@router.get("/images/{name}")
-async def get_gallery_image(name: str) -> Response:
-    if not _SAFE_NAME.match(name):
-        raise HTTPException(status_code=400, detail="Invalid image name")
+@router.get("/images/{category}/{name}")
+async def get_gallery_image(category: str, name: str) -> Response:
+    if not _SAFE_NAME.match(category) or not _SAFE_NAME.match(name):
+        raise HTTPException(status_code=400, detail="Invalid category or image name")
 
     async with httpx.AsyncClient() as client:
         try:
-            response = await client.get(_image_url(name), timeout=15.0)
+            response = await client.get(_image_url(category, name), timeout=15.0)
             response.raise_for_status()
         except httpx.HTTPError as exc:
             raise HTTPException(

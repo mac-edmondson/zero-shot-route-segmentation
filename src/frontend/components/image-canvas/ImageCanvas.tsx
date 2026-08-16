@@ -5,11 +5,20 @@ import type { Coordinate, Segment } from "@/lib/api";
 import { Button } from "@/components/button/Button";
 import styles from "./ImageCanvas.module.css";
 
+/** Chalk fill's opacity at 100% chalkPercent -- kept short of fully opaque
+ * so the hold's own outline/fill stays visible underneath even at max. */
+const MAX_CHALK_OPACITY = 0.8;
+
 interface ImageCanvasProps {
   imageSrc: string | null;
   /** 0-100. Previewed live on the image via a brightness filter; 0 is unmodified. */
   lightingPercent: number;
   segments: Segment[];
+  /** 0-100 per segmentId. Previewed live as a white fill clipped to that
+   * segment's own polygon -- same "live, client-side, no backend round
+   * trip" treatment as lightingPercent above, just scoped per-hold instead
+   * of image-wide. */
+  chalkBySegmentId: Record<string, number>;
   /** Points clicked but not yet submitted for detection. */
   pendingPoints: Coordinate[];
   webcamActive: boolean;
@@ -31,6 +40,7 @@ export function ImageCanvas({
   imageSrc,
   lightingPercent,
   segments,
+  chalkBySegmentId,
   pendingPoints,
   webcamActive,
   loading,
@@ -142,6 +152,18 @@ export function ImageCanvas({
                   points={segment.polygon.map((p) => `${p.x},${p.y}`).join(" ")}
                 />
               ))}
+              {segments.map((segment) => {
+                const chalkPercent = chalkBySegmentId[segment.segmentId] ?? 0;
+                if (chalkPercent <= 0) return null;
+                return (
+                  <polygon
+                    key={`chalk-${segment.segmentId}`}
+                    className={styles.chalkShape}
+                    points={segment.polygon.map((p) => `${p.x},${p.y}`).join(" ")}
+                    style={{ fillOpacity: (chalkPercent / 100) * MAX_CHALK_OPACITY }}
+                  />
+                );
+              })}
             </svg>
           )}
           {segments.map((segment, index) => {

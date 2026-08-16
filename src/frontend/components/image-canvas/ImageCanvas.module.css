@@ -143,6 +143,15 @@
   vector-effect: non-scaling-stroke;
 }
 
+/* Painted after (so on top of) .polygonShape -- fill-opacity is set inline
+ * per segment from its chalkPercent (see ImageCanvas.tsx), so this only
+ * supplies the color and a transition for smooth live slider updates. */
+.chalkShape {
+  fill: #fff;
+  stroke: none;
+  transition: fill-opacity var(--dur-fast) linear;
+}
+
 .captureButton {
   position: absolute;
   bottom: 1.25rem;

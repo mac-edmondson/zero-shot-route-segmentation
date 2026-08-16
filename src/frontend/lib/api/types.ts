@@ -120,6 +120,7 @@ export interface InferenceResult {
  */
 export interface GalleryImage {
   name: string;
+  category: string;
   url: string;
 }
 

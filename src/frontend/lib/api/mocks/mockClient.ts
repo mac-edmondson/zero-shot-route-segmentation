@@ -12,20 +12,35 @@ import type {
 import { ApiError } from "../types";
 
 /**
- * Same mock-polygon shape as the real backend's mock
- * (src/backend/services/mock_segmentation.py) -- a small octagon around the
- * clicked point -- so mock and real modes look the same until SAM3 is
- * actually wired in.
+ * Same randomized mock-polygon approach as the real backend's mock
+ * (src/backend/services/mock_segmentation.py) -- a small irregular blob
+ * around the clicked point, randomized per point rather than one fixed
+ * shape stamped everywhere -- so mock and real (mock-backed) modes look the
+ * same.
  */
-const MOCK_POLYGON_SIDES = 8;
-const MOCK_POLYGON_RADIUS = 0.025;
+const MOCK_POLYGON_MIN_SIDES = 6;
+const MOCK_POLYGON_MAX_SIDES = 10;
+// Normalized units -- roughly a hold-sized blob at typical image scale.
+const MOCK_POLYGON_MIN_RADIUS = 0.015;
+const MOCK_POLYGON_MAX_RADIUS = 0.035;
+// Per-vertex radius jitter, as a fraction of that polygon's base radius --
+// keeps vertices irregular/organic rather than a perfect regular polygon.
+const MOCK_POLYGON_VERTEX_JITTER = 0.3;
+
+function randomBetween(min: number, max: number): number {
+  return min + Math.random() * (max - min);
+}
 
 function mockPolygonAround(point: Coordinate): Coordinate[] {
-  return Array.from({ length: MOCK_POLYGON_SIDES }, (_, i) => {
-    const angle = (2 * Math.PI * i) / MOCK_POLYGON_SIDES;
+  const sides = Math.round(randomBetween(MOCK_POLYGON_MIN_SIDES, MOCK_POLYGON_MAX_SIDES));
+  const baseRadius = randomBetween(MOCK_POLYGON_MIN_RADIUS, MOCK_POLYGON_MAX_RADIUS);
+  return Array.from({ length: sides }, (_, i) => {
+    const angle = (2 * Math.PI * i) / sides;
+    const radius =
+      baseRadius * randomBetween(1 - MOCK_POLYGON_VERTEX_JITTER, 1 + MOCK_POLYGON_VERTEX_JITTER);
     return {
-      x: point.x + MOCK_POLYGON_RADIUS * Math.cos(angle),
-      y: point.y + MOCK_POLYGON_RADIUS * Math.sin(angle),
+      x: point.x + radius * Math.cos(angle),
+      y: point.y + radius * Math.sin(angle),
     };
   });
 }
@@ -65,17 +80,20 @@ interface StoredImage extends ImageSummary {
   dataUrl: string;
 }
 
-// A small, fixed slice of the real gallery's known naming scheme
-// (0000.jpg, 0001.jpg, ...) purely so the mock picker's tiles show real
-// photos via <img src> (safe -- no CORS involved in display). The real
-// backend (src/backend/gallery.py) lists the *actual* directory instead of
-// hardcoding names like this.
-const MOCK_GALLERY_IMAGES: GalleryImage[] = MOCK_GALLERY_BASE_URL
-  ? Array.from({ length: 12 }, (_, i) => {
-      const name = `${String(i).padStart(4, "0")}.jpg`;
-      return { name, url: `${MOCK_GALLERY_BASE_URL}/${name}` };
-    })
-  : [];
+// A small, fixed slice of the real gallery's known category/naming scheme
+// (bh/0000.jpg, bh/0001.jpg, ...) purely so the mock picker's tiles show
+// real photos via <img src> (safe -- no CORS involved in display). The real
+// backend (src/backend/gallery.py) lists the *actual* directories/files
+// instead of hardcoding names like this.
+const MOCK_GALLERY_CATEGORIES = ["bh", "bh-phone", "model", "sm"];
+
+function mockGalleryImages(category: string): GalleryImage[] {
+  if (!MOCK_GALLERY_BASE_URL) return [];
+  return Array.from({ length: 12 }, (_, i) => {
+    const name = `${String(i).padStart(4, "0")}.jpg`;
+    return { name, category, url: `${MOCK_GALLERY_BASE_URL}/${category}/${name}` };
+  });
+}
 
 /**
  * The mock client can't actually fetch the gallery server's bytes
@@ -230,11 +248,15 @@ export const mockApiClient: RouteDetectionApiClient = {
     return delay(pipelineConfig);
   },
 
-  listGalleryImages() {
-    return delay(MOCK_GALLERY_IMAGES);
+  listGalleryCategories() {
+    return delay(MOCK_GALLERY_BASE_URL ? MOCK_GALLERY_CATEGORIES : []);
   },
 
-  fetchGalleryImage(name) {
-    return placeholderGalleryBlob(name);
+  listGalleryImages(category) {
+    return delay(mockGalleryImages(category));
+  },
+
+  fetchGalleryImage(category, name) {
+    return placeholderGalleryBlob(`${category}/${name}`);
   },
 };

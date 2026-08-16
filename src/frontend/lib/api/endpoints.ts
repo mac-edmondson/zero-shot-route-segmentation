@@ -83,12 +83,25 @@ export const restApiClient: RouteDetectionApiClient = {
     return request("/pipeline", { method: "PUT", body: config });
   },
 
-  async listGalleryImages(signal) {
-    const { images } = await request<{ images: GalleryImage[] }>("/gallery/images", { signal });
+  async listGalleryCategories(signal) {
+    const { categories } = await request<{ categories: { name: string }[] }>(
+      "/gallery/categories",
+      { signal },
+    );
+    return categories.map((c) => c.name);
+  },
+
+  async listGalleryImages(category, signal) {
+    const { images } = await request<{ images: GalleryImage[] }>(
+      `/gallery/images?category=${encodeURIComponent(category)}`,
+      { signal },
+    );
     return images;
   },
 
-  fetchGalleryImage(name) {
-    return requestBlob(`/gallery/images/${encodeURIComponent(name)}`);
+  fetchGalleryImage(category, name) {
+    return requestBlob(
+      `/gallery/images/${encodeURIComponent(category)}/${encodeURIComponent(name)}`,
+    );
   },
 };

@@ -49,11 +49,16 @@ export interface RouteDetectionApiClient {
   setPipeline(config: PipelineConfig): Promise<PipelineConfig>;
 
   /**
-   * Lists images available in the external sample-image gallery, proxied
-   * through the backend (src/backend/gallery.py) since that server sends no
-   * CORS headers and a direct browser fetch() to it would be blocked.
+   * Lists the top-level categories in the external sample-image gallery
+   * (e.g. "bh", "sm") -- shown first so the picker never has to load every
+   * image across every category at once (some categories run to 1000+
+   * images). Proxied through the backend (src/backend/gallery.py) since
+   * that server sends no CORS headers and a direct browser fetch() to it
+   * would be blocked.
    */
-  listGalleryImages(signal?: AbortSignal): Promise<GalleryImage[]>;
+  listGalleryCategories(signal?: AbortSignal): Promise<string[]>;
+  /** Lists images within one gallery category, chosen from {@link listGalleryCategories}. */
+  listGalleryImages(category: string, signal?: AbortSignal): Promise<GalleryImage[]>;
   /** Fetches one gallery image's actual bytes (same CORS reason as above). */
-  fetchGalleryImage(name: string): Promise<Blob>;
+  fetchGalleryImage(category: string, name: string): Promise<Blob>;
 }

@@ -29,6 +29,21 @@ const ROUTE_MODEL_OPTIONS = ["Color-only", "Color + Spatial", "Combined"];
  */
 const MODEL_SELECT_REVEAL_MS = 1875;
 
+function fileToDataUrl(file: File | Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+function createLocalImageId(): string {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : Math.random().toString(36).slice(2);
+}
+
 /**
  * The ROUTNet landing page (Project stuff/UI_page_1.png): pick or capture a
  * wall image, mark hold segments, adjust lighting/chalk, then hand off to
@@ -121,10 +136,13 @@ export function WallImageWorkspace() {
     setLoading(true);
     setError(null);
     try {
-      const summary = await apiClient.uploadImage(file);
-      const working = await apiClient.setWorkingImage(summary.id);
-      setImageId(working.imageId);
-      setImageSrc(working.image);
+      // The image never goes to the backend here -- it's stateless and
+      // never stores images (see the imageFile comment above); loading it
+      // into the panel is purely a local render. The whole file only gets
+      // sent over the wire later, per detect call, via detectWorkingSegments.
+      const dataUrl = await fileToDataUrl(file);
+      setImageId(createLocalImageId());
+      setImageSrc(dataUrl);
       setImageFile(file);
       setSegments([]);
       setPendingPoints([]);
@@ -142,11 +160,11 @@ export function WallImageWorkspace() {
     }
   }, []);
 
-  async function handleGallerySelect(name: string) {
+  async function handleGallerySelect(category: string, name: string) {
     setGallerySelecting(true);
     setError(null);
     try {
-      const blob = await apiClient.fetchGalleryImage(name);
+      const blob = await apiClient.fetchGalleryImage(category, name);
       await loadImage(blob);
       setGalleryOpen(false);
     } catch {
@@ -292,6 +310,7 @@ export function WallImageWorkspace() {
             imageSrc={imageSrc}
             lightingPercent={lighting}
             segments={segments}
+            chalkBySegmentId={chalkBySegmentId}
             pendingPoints={pendingPoints}
             webcamActive={webcamActive}
             loading={loading || detecting}
