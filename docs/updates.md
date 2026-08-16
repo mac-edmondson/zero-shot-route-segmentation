@@ -6,12 +6,12 @@
 
 ## `sam3_hold_detector.py`
 
-`SAMHoldDetector` is the reusable automatic hold detector. It supports these configurations:
+`SAMHoldDetector` is the reusable automatic hold detector. Configure it with a text prompt and an optional ordered list of `(PIL.Image.Image, binary_mask)` exemplar pairs, then call `get_holds(images)`.
 
-- Text only: `SAMHoldDetector(mode="text", text_prompt="colored climbing holds", ...)`.
-- One exemplar: `SAMHoldDetector(mode="text_exemplar", exemplar_image=image, exemplar_mask=mask, ...)`.
-- Multiple exemplars: `SAMHoldDetector(mode="text_exemplar", exemplars=[(image_a, mask_a), (image_b, mask_b)], nms_iou=0.85, ...)`.
+- Text only: `SAMHoldDetector(text_prompt="colored climbing holds", ...)`.
+- One exemplar: `SAMHoldDetector(exemplars=[(image, mask)], ...)`.
+- Multiple exemplars: `SAMHoldDetector(exemplars=[(image_a, mask_a), (image_b, mask_b)], nms_iou=0.85, ...)`.
 
-Single-exemplar calls remain compatible. Multiple exemplars are run independently, then their scored masks are merged and deduplicated with confidence-ordered mask-IoU NMS. The detector only removes overlaps at or above `nms_iou` (default 0.85), preserving nearby distinct holds. Masks must be non-empty binary arrays aligned with their exemplar images.
+An empty or omitted exemplar list selects text-only inference. Each supplied exemplar is run independently; scored masks are merged and deduplicated with confidence-ordered mask-IoU NMS. The detector removes only overlaps at or above `nms_iou` (default 0.85), preserving nearby distinct holds. Exemplar masks must be non-empty binary arrays aligned with their exemplar images.
 
 Retained evaluation inputs and completed A40 findings are documented in [evaluation.md](evaluation.md).
