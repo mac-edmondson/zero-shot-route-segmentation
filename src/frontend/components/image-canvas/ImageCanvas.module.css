@@ -115,6 +115,34 @@
   }
 }
 
+.pendingMarker {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  margin-left: -7px;
+  margin-top: -7px;
+  border-radius: 50%;
+  border: 2px dashed var(--muted);
+  background: rgba(255, 255, 255, 0.08);
+  pointer-events: none;
+  animation: marker-in var(--dur) var(--ease);
+}
+
+.polygonOverlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.polygonShape {
+  fill: color-mix(in srgb, var(--accent) 18%, transparent);
+  stroke: var(--accent);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
 .captureButton {
   position: absolute;
   bottom: 1.25rem;

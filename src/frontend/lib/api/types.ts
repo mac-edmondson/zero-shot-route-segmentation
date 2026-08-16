@@ -53,13 +53,17 @@ export interface WorkingImage {
 
 /**
  * A user-marked region on the working image -- "segment" in the REST spec,
- * conceptually a `Hold` in the shared data model. Until a real HoldDetector
- * exists, the frontend lets a user drop points manually so augmentations
- * have something to target.
+ * conceptually a `Hold` in the shared data model. The user clicks a point,
+ * the backend runs it through a segmentation model (currently a mock
+ * stand-in for SAM3 -- see docs/spec/pipeline/interfaces/hold-detector.md)
+ * and returns a polygon outline for it.
  */
 export interface Segment {
   segmentId: string;
+  /** The clicked point(s) that produced this segment. */
   coordinates: Coordinate[];
+  /** Detected hold outline, normalized to [0, 1] of the image. */
+  polygon: Coordinate[];
 }
 
 /** Per-segment augmentation applied by `POST /image/working/augment`. */
@@ -104,6 +108,19 @@ export interface InferenceResult {
   /** One route list per input image; each route is a list of holds. */
   routes: Route[];
   inferenceMetrics: Record<string, number>;
+}
+
+/**
+ * One image available in the external sample-image gallery
+ * (src/backend/gallery.py). `url` is the external server's direct URL --
+ * safe for a plain `<img src>` (CORS only blocks JS from reading bytes, not
+ * the browser from rendering an image) -- but actually fetching those bytes
+ * must go through `fetchGalleryImage`/the backend proxy, since that server
+ * sends no CORS headers.
+ */
+export interface GalleryImage {
+  name: string;
+  url: string;
 }
 
 export class ApiError extends Error {

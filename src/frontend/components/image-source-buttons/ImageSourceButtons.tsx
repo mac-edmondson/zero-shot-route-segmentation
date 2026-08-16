@@ -9,14 +9,17 @@ interface ImageSourceButtonsProps {
   disabled?: boolean;
   onFileSelected: (file: File) => void;
   onToggleWebcam: () => void;
+  /** Opens the gallery picker (src/backend/gallery.py-backed sample images). */
+  onOpenGallery: () => void;
 }
 
-/** "Gallery" / "Webcam" source pickers from the ROUTNet wireframe. */
+/** "Upload" / "Gallery" / "Webcam" source pickers from the ROUTNet wireframe. */
 export function ImageSourceButtons({
   webcamActive,
   disabled = false,
   onFileSelected,
   onToggleWebcam,
+  onOpenGallery,
 }: ImageSourceButtonsProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -27,7 +30,7 @@ export function ImageSourceButtons({
         disabled={disabled}
         onClick={() => fileInputRef.current?.click()}
       >
-        Gallery
+        Upload
       </Button>
       <input
         ref={fileInputRef}
@@ -42,6 +45,9 @@ export function ImageSourceButtons({
           event.target.value = "";
         }}
       />
+      <Button type="button" disabled={disabled} onClick={onOpenGallery}>
+        Gallery
+      </Button>
       <Button
         type="button"
         active={webcamActive}

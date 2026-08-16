@@ -1,5 +1,8 @@
+import { MOCK_GALLERY_BASE_URL } from "../config";
 import type { RouteDetectionApiClient } from "../contract";
 import type {
+  Coordinate,
+  GalleryImage,
   ImageSummary,
   InferenceResult,
   PipelineConfig,
@@ -7,6 +10,25 @@ import type {
   WorkingImage,
 } from "../types";
 import { ApiError } from "../types";
+
+/**
+ * Same mock-polygon shape as the real backend's mock
+ * (src/backend/services/mock_segmentation.py) -- a small octagon around the
+ * clicked point -- so mock and real modes look the same until SAM3 is
+ * actually wired in.
+ */
+const MOCK_POLYGON_SIDES = 8;
+const MOCK_POLYGON_RADIUS = 0.025;
+
+function mockPolygonAround(point: Coordinate): Coordinate[] {
+  return Array.from({ length: MOCK_POLYGON_SIDES }, (_, i) => {
+    const angle = (2 * Math.PI * i) / MOCK_POLYGON_SIDES;
+    return {
+      x: point.x + MOCK_POLYGON_RADIUS * Math.cos(angle),
+      y: point.y + MOCK_POLYGON_RADIUS * Math.sin(angle),
+    };
+  });
+}
 
 /**
  * In-memory stand-in for the Dashboard Backend
@@ -41,6 +63,46 @@ function createId(prefix: string): string {
 
 interface StoredImage extends ImageSummary {
   dataUrl: string;
+}
+
+// A small, fixed slice of the real gallery's known naming scheme
+// (0000.jpg, 0001.jpg, ...) purely so the mock picker's tiles show real
+// photos via <img src> (safe -- no CORS involved in display). The real
+// backend (src/backend/gallery.py) lists the *actual* directory instead of
+// hardcoding names like this.
+const MOCK_GALLERY_IMAGES: GalleryImage[] = MOCK_GALLERY_BASE_URL
+  ? Array.from({ length: 12 }, (_, i) => {
+      const name = `${String(i).padStart(4, "0")}.jpg`;
+      return { name, url: `${MOCK_GALLERY_BASE_URL}/${name}` };
+    })
+  : [];
+
+/**
+ * The mock client can't actually fetch the gallery server's bytes
+ * client-side -- it sends no CORS headers, so a browser fetch() is blocked
+ * regardless of mock/real API mode. Real mode instead proxies through the
+ * backend (src/backend/gallery.py); the mock substitutes a synthesized
+ * placeholder image so "select a gallery image" still works end to end
+ * without a backend running.
+ */
+function placeholderGalleryBlob(name: string): Promise<Blob> {
+  const canvas = document.createElement("canvas");
+  canvas.width = 640;
+  canvas.height = 480;
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    ctx.fillStyle = "#20242c";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#ff7a45";
+    ctx.font = "28px sans-serif";
+    ctx.fillText("Mock gallery image", 32, 56);
+    ctx.fillStyle = "#a9adb6";
+    ctx.font = "18px sans-serif";
+    ctx.fillText(name, 32, 88);
+  }
+  return new Promise((resolve) => {
+    canvas.toBlob((blob) => resolve(blob ?? new Blob()), "image/png");
+  });
 }
 
 const images = new Map<string, StoredImage>();
@@ -99,13 +161,20 @@ export const mockApiClient: RouteDetectionApiClient = {
     return delay(result);
   },
 
-  addWorkingSegment(coordinates) {
+  detectWorkingSegments(_image, coordinates) {
     if (!workingImageId) {
       return Promise.reject(new ApiError("No working image set", 409));
     }
-    const segment: Segment = { segmentId: createId("seg"), coordinates };
-    segments.set(segment.segmentId, segment);
-    return delay(segment);
+    const created = coordinates.map((point): Segment => {
+      const segment: Segment = {
+        segmentId: createId("seg"),
+        coordinates: [point],
+        polygon: mockPolygonAround(point),
+      };
+      segments.set(segment.segmentId, segment);
+      return segment;
+    });
+    return delay(created);
   },
 
   deleteWorkingSegment(segmentId) {
@@ -139,7 +208,7 @@ export const mockApiClient: RouteDetectionApiClient = {
         holds: [
           {
             centroid: segment.coordinates[0] ?? { x: 0, y: 0 },
-            polygon: { points: segment.coordinates },
+            polygon: { points: segment.polygon },
           },
         ],
       })),
@@ -159,5 +228,13 @@ export const mockApiClient: RouteDetectionApiClient = {
   setPipeline(config) {
     pipelineConfig = config;
     return delay(pipelineConfig);
+  },
+
+  listGalleryImages() {
+    return delay(MOCK_GALLERY_IMAGES);
+  },
+
+  fetchGalleryImage(name) {
+    return placeholderGalleryBlob(name);
   },
 };
