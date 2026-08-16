@@ -17,16 +17,3 @@ dependencies = [
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
-
-[project.optional-dependencies]
-# Direct dependencies used by notebooks/sam3_bouldering_point_prompts.ipynb.
-sam3-notebook = [
-    "torch",
-    "transformers",
-    "huggingface-hub",
-    "pillow",
-    "numpy",
-    "matplotlib",
-    "ipympl",
-    "jupyterlab",
-]
