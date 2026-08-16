@@ -41,3 +41,17 @@ A match uses one-to-one mask IoU ≥0.50. Evaluation used recall-first proposal 
 SAM3 reported that the optional `kernels` package was unavailable, so its internal NMS, hole filling, and sprinkle removal were skipped during this run.
 
 For current pipeline API usage, see [updates.md](updates.md).
+
+## Color-specific prompt sweep
+
+Ten independent A40 jobs ran the same nine images with five prompts: `red climbing holds`, `blue climbing holds`, `green climbing holds`, `yellow climbing holds`, and `orange climbing holds`. For each prompt, one text-only arm and one text-plus-the-fixed-five-exemplar arm were run. Jobs `4034185`–`4034194` all completed successfully. This is a qualitative count-and-timing sweep; no VIA annotation metrics were computed.
+
+| Prompt | Text-only detections | Text-only s/image | Five-exemplar detections | Five-exemplar s/image |
+| --- | ---: | ---: | ---: | ---: |
+| `red climbing holds` | 0 | 0.837 | 31 | 5.676 |
+| `blue climbing holds` | 1 | 0.856 | 31 | 5.686 |
+| `green climbing holds` | 1 | 0.856 | 31 | 5.682 |
+| `yellow climbing holds` | 2 | 0.856 | 31 | 5.405 |
+| `orange climbing holds` | 2 | 0.607 | 31 | 5.391 |
+
+Text-only detections occurred only in `0003.jpg`: 0 for red, 1 for blue and green, and 2 for yellow and orange. Every five-exemplar arm produced the same per-image counts: `0000` 3, `0001` 4, `0002` 3, `0003` 4, `0004` 1, `0005` 4, `0006` 5, `0007` 3, and `0008` 4. Thus, for this fixed exemplar set, color wording did not change the five-exemplar result. Raw job scripts, logs, and CSV/JSON summaries are intentionally temporary under `tmp/color_prompt_sweep/`.
