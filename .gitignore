@@ -15,3 +15,6 @@ wheels/
 # SLURM validation output
 logs/
 src/SAM_hold/results/
+
+# Local pretrained detector artifacts
+models/mask_rcnn_hold_detector/

@@ -33,7 +33,7 @@ class RGBColor:
     def __post_init__(self) -> None:
         if any(isinstance(v, bool) or not isinstance(v, int) or not 0 <= v <= 255 for v in (self.r, self.g, self.b)): raise ValueError("RGB values must be integers in [0, 255].")
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, eq=False)
 class Hold:
     centroid: Coordinate
     polygon: Polygon
