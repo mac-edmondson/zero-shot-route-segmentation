@@ -1,6 +1,19 @@
+import { API_BASE_URL } from "./config";
 import { request, requestBlob } from "./client";
 import type { RouteDetectionApiClient } from "./contract";
-import type { Coordinate, GalleryImage, Segment } from "./types";
+import type { Coordinate, Segment } from "./types";
+
+/** One entry returned by Nginx's JSON autoindex for the gallery directory. */
+interface GalleryDirectoryEntry {
+  name: string;
+  type: "file" | "directory";
+}
+
+const GALLERY_IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"];
+
+function galleryImageUrl(category: string, name: string): string {
+  return `${API_BASE_URL}/images/${encodeURIComponent(category)}/${encodeURIComponent(name)}`;
+}
 
 /** Wire shape returned by `POST /image/working/segments` (src/backend/schemas.py). */
 interface DetectSegmentsResponse {
@@ -84,24 +97,31 @@ export const restApiClient: RouteDetectionApiClient = {
   },
 
   async listGalleryCategories(signal) {
-    const { categories } = await request<{ categories: { name: string }[] }>(
-      "/gallery/categories",
-      { signal },
-    );
-    return categories.map((c) => c.name);
+    const entries = await request<GalleryDirectoryEntry[]>("/images/", { signal });
+    return entries.filter((entry) => entry.type === "directory").map((entry) => entry.name);
   },
 
   async listGalleryImages(category, signal) {
-    const { images } = await request<{ images: GalleryImage[] }>(
-      `/gallery/images?category=${encodeURIComponent(category)}`,
+    const entries = await request<GalleryDirectoryEntry[]>(
+      `/images/${encodeURIComponent(category)}/`,
       { signal },
     );
-    return images;
+    return entries
+      .filter(
+        (entry) =>
+          entry.type === "file" &&
+          GALLERY_IMAGE_EXTENSIONS.some((extension) => entry.name.toLowerCase().endsWith(extension)),
+      )
+      .map((entry) => ({
+        name: entry.name,
+        category,
+        url: galleryImageUrl(category, entry.name),
+      }));
   },
 
   fetchGalleryImage(category, name) {
     return requestBlob(
-      `/gallery/images/${encodeURIComponent(category)}/${encodeURIComponent(name)}`,
+      `/images/${encodeURIComponent(category)}/${encodeURIComponent(name)}`,
     );
   },
 };
