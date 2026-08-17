@@ -47,8 +47,6 @@ services:
     environment:
       ENVIRONMENT: production
       # TODO: Why are these even defined for the backend. These should be for the frontend.
-      IMAGE_GALLERY_BASE_URL: ${IMAGE_GALLERY_BASE_URL:-https://cvp.iamemacs.com}
-      IMAGE_GALLERY_PATH: ${IMAGE_GALLERY_PATH:-/api/images/bh}
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
     expose:
       - "8000"

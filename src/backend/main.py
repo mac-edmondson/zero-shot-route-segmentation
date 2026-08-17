@@ -4,16 +4,9 @@ import os
 
 from dotenv import load_dotenv
 
-# Must run before the .gallery import below, which reads
-# IMAGE_GALLERY_BASE_URL/IMAGE_GALLERY_PATH from the environment at request
-# time -- this is what makes a local .env file (see .env.example) actually
-# take effect instead of only real exported env vars.
-load_dotenv()
-
 from fastapi import FastAPI  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 
-from .gallery import router as gallery_router  # noqa: E402
 from .routes import router  # noqa: E402
 
 app = FastAPI(title="ROUTNet Dashboard Backend")
@@ -32,7 +25,6 @@ app.add_middleware(
 )
 
 app.include_router(router)
-app.include_router(gallery_router)
 
 
 @app.get("/health")
