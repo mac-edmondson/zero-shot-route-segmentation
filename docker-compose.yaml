@@ -40,16 +40,16 @@ services:
       start_period: 20s
 
   backend:
-    # Temporary API stub; replace with the real backend image when available.
-    image: python:3.12-alpine
-    command:
-      - python
-      - -c
-      - >-
-        from http.server import BaseHTTPRequestHandler, HTTPServer; HTTPServer(("", 8000), type("Handler", (BaseHTTPRequestHandler,), { "do_GET": lambda self: (self.send_response(200), self.end_headers(), self.wfile.write(b"hello")), "log_message": lambda self, *args: None})).serve_forever()
+    build:
+      context: .
+      dockerfile: src/backend/Dockerfile
     restart: unless-stopped
     environment:
       ENVIRONMENT: production
+      # TODO: Why are these even defined for the backend. These should be for the frontend.
+      IMAGE_GALLERY_BASE_URL: ${IMAGE_GALLERY_BASE_URL:-https://cvp.iamemacs.com}
+      IMAGE_GALLERY_PATH: ${IMAGE_GALLERY_PATH:-/api/images/bh}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
     expose:
       - "8000"
     healthcheck:
@@ -57,4 +57,4 @@ services:
       interval: 30s
       timeout: 5s
       retries: 5
-      start_period: 5s
+      start_period: 15s
