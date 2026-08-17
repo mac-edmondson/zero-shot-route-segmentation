@@ -29,12 +29,40 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.headerLeft {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.backButton {
+  flex: none;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--foreground);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0.35rem 0.6rem;
+  transition: border-color var(--dur-fast) var(--ease);
+}
+
+.backButton:hover {
+  border-color: var(--accent);
 }
 
 .title {
   font-size: 1rem;
   font-weight: 600;
   margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .closeButton {
@@ -61,11 +89,68 @@
   color: var(--danger);
 }
 
-.grid {
+/*
+ * The flex/scroll sizing lives on this wrapper, never on the grid itself.
+ * `flex: 1 1 auto; min-height: 0;` is what lets a flex column item (this
+ * wrapper) shrink to .panel's max-height and scroll instead of overflowing
+ * past it. Putting `display: grid` on that *same* element is the bug that
+ * caused the tiles to overlap: once flexbox stretches an element to a
+ * definite height, CSS Grid's "auto" row tracks stop sizing to their
+ * content (each tile's own aspect-ratio height) and instead divide that
+ * fixed height evenly across every row, squashing each row's actual
+ * (taller) tile into a sliver of its own track -- rows visibly overlap
+ * because the tiles inside no longer fit the row they're placed in.
+ * Splitting scroll-wrapper and grid into two elements lets the grid size
+ * its rows to content while the wrapper clips/scrolls around it.
+ */
+.categoryScroll {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
+}
+
+.categoryList {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 0.6rem;
+  align-content: start;
+}
+
+.categoryTile {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--foreground);
+  font-size: 0.95rem;
+  font-weight: 600;
+  text-transform: capitalize;
+  cursor: pointer;
+  padding: 1.5rem 1rem;
+  transition: border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
+}
+
+.categoryTile:hover {
+  border-color: var(--accent);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* See .categoryScroll/.categoryList above -- same split, same reason. */
+.gridScroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
   gap: 0.6rem;
+  align-content: start;
+}
+
+.loadMore {
+  flex: none;
+  align-self: center;
 }
 
 .tile {

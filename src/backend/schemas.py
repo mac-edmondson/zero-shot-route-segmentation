@@ -35,12 +35,25 @@ class DetectSegmentsResponse(BaseModel):
     segments: list[SegmentResult]
 
 
+class GalleryCategory(BaseModel):
+    """One subdirectory of the gallery root (e.g. "bh", "sm") -- the external
+    server groups its images this way, so the picker lists categories first
+    instead of loading every image across every category at once."""
+
+    name: str
+
+
+class GalleryCategoriesResponse(BaseModel):
+    categories: list[GalleryCategory]
+
+
 class GalleryImage(BaseModel):
     name: str
+    category: str
     """Direct URL on the external gallery server -- safe to use as an <img
     src> on the frontend as-is (CORS only blocks JS from reading bytes, not
     the browser from rendering an <img>); only fetching raw bytes needs the
-    /gallery/images/{name} proxy below."""
+    /gallery/images/{category}/{name} proxy below."""
     url: str
 
 
