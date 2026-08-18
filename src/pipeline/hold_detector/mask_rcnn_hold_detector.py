@@ -8,7 +8,7 @@ import cv2
 import numpy as np
 import torch
 from PIL import Image, ImageDraw
-from .data_models import Coordinate, Hold, Polygon
+from ..interfaces.data_models import Coordinate, Hold, Polygon
 from .hold_detector import BatchAlignmentError, InvalidImageError
 
 class MaskRCNNHoldDetector:
@@ -86,12 +86,12 @@ class MaskRCNNHoldDetector:
     def _mask_to_hold(cls, mask: np.ndarray, confidence: float, class_id: int) -> Hold | None:
         contours, _ = cv2.findContours(np.asarray(mask, dtype=np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         if not contours: return None
-        contour = max(contours, key=cv2.contourArea); moments = cv2.moments(contour)
-        if moments["m00"] == 0: return None
+        contour = max(contours, key=cv2.contourArea)
         try: polygon = Polygon(tuple(Coordinate(float(x), float(y)) for x, y in contour.reshape(-1, 2)))
         except ValueError: return None
-        return Hold(Coordinate(moments["m10"] / moments["m00"], moments["m01"] / moments["m00"]), polygon,
-                    {"mask": np.asarray(mask, dtype=bool).copy(), "confidence": confidence, "class_id": class_id, "class_name": cls._CLASS_NAMES[class_id], "implementation_id": cls.implementation_id})
+        return Hold(polygon, {"mask": np.asarray(mask, dtype=bool).copy(), "confidence": confidence,
+                              "class_id": class_id, "class_name": cls._CLASS_NAMES[class_id],
+                              "implementation_id": cls.implementation_id})
 
     @staticmethod
     def mark_holds(images: Sequence[Image.Image], holds: Sequence[Sequence[Hold]]) -> list[Image.Image]:

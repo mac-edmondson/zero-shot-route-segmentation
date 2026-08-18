@@ -2,8 +2,8 @@ import numpy as np
 import pytest
 import torch
 from PIL import Image
-from pipeline.interfaces.hold_detector import BatchAlignmentError, InvalidImageError
-from pipeline.interfaces.mask_rcnn_hold_detector import MaskRCNNHoldDetector
+from pipeline.hold_detector.hold_detector import BatchAlignmentError, InvalidImageError
+from pipeline.hold_detector.mask_rcnn_hold_detector import MaskRCNNHoldDetector
 
 class Instances:
     def __init__(self, masks, scores, classes):
@@ -27,8 +27,8 @@ def test_converts_source_coordinate_masks_and_preserves_order():
     detector.model = Model([Instances([mask()], [0.9], [0]), Instances([second], [0.8], [0])])
     holds = detector.get_holds([Image.new("RGB", (16, 12)), Image.new("RGB", (16, 12))])
     assert [len(batch) for batch in holds] == [1, 1]
-    assert holds[0][0].centroid.x == pytest.approx(7.5)
-    assert holds[1][0].centroid.y == pytest.approx(2.5)
+    assert holds[0][0].centroid.x == 8
+    assert holds[1][0].centroid.y == 2
     assert holds[0][0].attributes["mask"].shape == (12, 16)
     assert holds[0][0].attributes["confidence"] == pytest.approx(0.9)
 
