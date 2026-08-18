@@ -143,3 +143,37 @@ class Route:
 
 
 # TODO: Define output objects for pipeline results.
+
+@dataclass(frozen=True)
+class ImageRecord:
+    """An immutable image, annotations, and provenance for dataset processing."""
+
+    image_id: str
+    image: Image
+    annotations: tuple[Hold, ...] = ()
+    split: str | None = None
+    source_id: str | None = None
+    parent_image_id: str | None = None
+    condition: str = "clean"
+    augmentation_metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.image_id, str) or not self.image_id.strip():
+            raise ValueError("image_id must be a non-empty string.")
+        if not isinstance(self.image, PILImage.Image):
+            raise TypeError("image must be PIL.Image.Image.")
+        annotations = tuple(self.annotations)
+        if any(not isinstance(annotation, Hold) for annotation in annotations):
+            raise TypeError("annotations must contain Hold values.")
+        if self.split is not None and (not isinstance(self.split, str) or not self.split.strip()):
+            raise ValueError("split must be a non-empty string when supplied.")
+        for value, name in ((self.source_id, "source_id"), (self.parent_image_id, "parent_image_id")):
+            if value is not None and (not isinstance(value, str) or not value.strip()):
+                raise ValueError(f"{name} must be a non-empty string when supplied.")
+        if self.condition not in {"clean", "augmented"}:
+            raise ValueError("condition must be either 'clean' or 'augmented'.")
+        if not isinstance(self.augmentation_metadata, Mapping):
+            raise TypeError("augmentation_metadata must be a mapping.")
+        object.__setattr__(self, "annotations", annotations)
+        object.__setattr__(self, "source_id", self.source_id or self.image_id)
+        object.__setattr__(self, "augmentation_metadata", MappingProxyType(dict(self.augmentation_metadata)))

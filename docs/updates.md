@@ -19,3 +19,20 @@ Retained evaluation inputs and completed A40 findings are documented in [evaluat
 ## Route classifiers
 
 Color-only and pretrained TripletNet route classifiers are available through `RouteClassifierFactory` as `color_only_classifier` and `triplet_route_classifier`.
+
+## Preprocessing and augmentation
+
+`pipeline.preprocessing` now provides `AugmentationSuite` and
+`DataPreprocessingPipeline` for reproducible clean-versus-augmented evaluation
+inputs. `ImageRecord` is the shared immutable image/annotation/provenance
+contract; annotations are tuples of existing `Hold` values.
+
+`AugmentationSuite` supports polygon-local seeded chalk, polygon-local color
+blending, and global lighting. Plans always apply chalk, then color, then
+lighting without mutating caller-owned PIL images. `DatasetSpec` supports
+`STATIC` and `ON_THE_FLY` materialization; both preserve source and parent IDs,
+annotations, deterministic split assignment, and augmentation metadata.
+
+This layer deliberately does not perform Mask R-CNN or TripletNet tensor
+preprocessing. Those adapters retain their validated BGR/config-driven
+preprocessing behavior.
