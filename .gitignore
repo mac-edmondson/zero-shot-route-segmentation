@@ -21,3 +21,7 @@ Project stuff/edmondson-dsouza-hedge-cv-proposal.pdf
 
 # draw.io backup files
 *.bkp
+
+# SLURM validation output
+logs/
+src/SAM_hold/results/
