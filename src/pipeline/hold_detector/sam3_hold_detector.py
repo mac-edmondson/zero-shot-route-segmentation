@@ -14,8 +14,12 @@ from PIL import Image, ImageDraw
 from transformers import Sam3VideoModel, Sam3VideoProcessor
 
 from ..interfaces.data_models import Coordinate, Hold, Polygon
-from .hold_detector import BatchAlignmentError, InvalidImageError
-from .hold_detector_factory import InvalidHoldDetectorConfigError
+from .hold_detector import (
+    HoldDetector,
+    BatchAlignmentError,
+    InvalidHoldDetectorConfigError,
+    InvalidImageError,
+)
 
 Exemplar: TypeAlias = tuple[Image.Image, np.ndarray]
 
@@ -207,7 +211,7 @@ class SAM3HoldWrapper:
         return result
 
 
-class SAMHoldDetector(SAM3HoldWrapper):
+class SAMHoldDetector(HoldDetector, SAM3HoldWrapper):
     """Detect holds from text and an optional ordered list of exemplars.
 
     Use ``SAMHoldDetector(text_prompt="climbing hold")`` for text-only
@@ -218,7 +222,9 @@ class SAMHoldDetector(SAM3HoldWrapper):
     ``nms_iou`` are removed.
     """
 
-    implementation_id = "sam_hold_detector"
+    @property
+    def implementation_id(self) -> str:
+        return "sam_hold_detector"
 
     def __init__(
         self,
@@ -316,26 +322,6 @@ class SAMHoldDetector(SAM3HoldWrapper):
             raise ValueError("Masks must share a shape for NMS.")
         union = np.count_nonzero(left | right)
         return float(np.count_nonzero(left & right) / union) if union else 0.0
-
-    @staticmethod
-    def mark_holds(
-        images: Sequence[Image.Image], holds: Sequence[Sequence[Hold]]
-    ) -> list[Image.Image]:
-        """Render hold polygons over copies of their source images."""
-        if len(images) != len(holds):
-            raise BatchAlignmentError("images and holds must align.")
-        result = []
-        for image, detected in zip(images, holds, strict=True):
-            overlay = image.convert("RGB").copy()
-            draw = ImageDraw.Draw(overlay)
-            for hold in detected:
-                points = [
-                    (point.x, point.y)
-                    for point in (*hold.polygon.points, hold.polygon.points[0])
-                ]
-                draw.line(points, fill=(255, 80, 0), width=3)
-            result.append(overlay)
-        return result
 
     @staticmethod
     def _to_holds(masks: Sequence[np.ndarray], mode: str) -> list[Hold]:

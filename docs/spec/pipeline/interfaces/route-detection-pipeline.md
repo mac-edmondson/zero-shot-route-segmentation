@@ -37,7 +37,7 @@ sequenceDiagram
     participant H as HoldDetector
     participant R as RouteClassifier
 
-    C->>P: run(images)
+    C->>P: get_routes(images)
     P->>H: get_holds(images)
     H-->>P: holds_by_image
     P->>R: get_routes(images, holds_by_image)
@@ -45,38 +45,8 @@ sequenceDiagram
     P-->>C: PipelineResult
 ```
 
-## 4. Required behavior
+## 4. Pipeline identity
 
-`run(images)` MUST:
-
-1. pass the exact input image batch to `hold_detector.get_holds`;
-2. verify returned batch alignment;
-3. pass the same image batch plus detector output to `route_classifier.get_routes`;
-4. verify returned batch alignment;
-5. return detections and routes associated with each original image.
-
-The pipeline MUST NOT hide the configured detector/classifier from [EvaluationSuite](evaluation-suite.md), because the board explicitly calls for evaluating individual pieces as well as whole pipelines.
-
-## 5. Optional visualization
-
-Visualization SHOULD remain outside core inference. Callers can use:
-
-- `HoldDetector.mark_holds(...)` for hold-level overlays;
-- `RouteClassifier.mark_routes(...)` or `Route.mark_route(...)` for route overlays.
-
-The [Dashboard Backend](dashboard-backend.md) MAY expose a convenience endpoint that produces both.
-
-## 6. Pipeline identity
-
-The pipeline SHOULD expose a serializable descriptor:
-
-```python
-@dataclass(frozen=True)
-class PipelineDescriptor:
-    detector_id: str
-    detector_config: dict
-    classifier_id: str
-    classifier_config: dict
-```
+The pipeline SHOULD expose a serializable descriptor.
 
 [EvaluationSuite](evaluation-suite.md) MUST persist this descriptor with results.

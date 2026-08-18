@@ -1,7 +1,5 @@
 # HoldDetector Interface
 
-TODO: Port to code and clean
-
 **Depends on:** [Shared Data Models](data-models.md)
 **Created by:** [HoldDetectorFactory](hold-detector-factory.md)
 **Consumed by:** [RouteDetectionPipeline](route-detection-pipeline.md), [EvaluationSuite](evaluation-suite.md)

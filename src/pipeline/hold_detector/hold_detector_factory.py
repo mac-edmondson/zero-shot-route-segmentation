@@ -8,56 +8,39 @@ from typing import Any
 from .hold_detector import HoldDetector
 
 
+################################################################################
+# Errors
+################################################################################
 class UnknownHoldDetectorError(ValueError):
     pass
 
 
-class InvalidHoldDetectorConfigError(ValueError):
-    pass
+################################################################################
+# Constructor Wrapper Methods
+################################################################################
+_ConfigArgs = Mapping[str, Any]
+_Constructor = Callable[[_ConfigArgs], HoldDetector]
 
 
-Constructor = Callable[[Mapping[str, Any]], HoldDetector]
+def _create_sam_hold_detector(config: Mapping[str, Any] = dict()) -> HoldDetector:
+    from .sam3_hold_detector import SAMHoldDetector
+
+    return SAMHoldDetector(**config)
 
 
-class HoldDetectorFactory:
-    """Register and create configured hold-detector implementations."""
+_AVAILABLE_HOLD_DETECTORS_MAP: Mapping[str, _Constructor] = {
+    "SAM3": _create_sam_hold_detector  # TODO: Consider adding parameters we want? @joswin03
+}
+AVAILABLE_HOLD_DETECTORS = list(_AVAILABLE_HOLD_DETECTORS_MAP.keys())
 
-    def __init__(self) -> None:
-        """Register built-in detector constructors."""
-        self._constructors: dict[str, Constructor] = {}
-        self.register("sam_hold_detector", self._create_sam_hold)
 
-    def register(self, method_id: str, constructor: Constructor) -> None:
-        """Register a constructor under a stable method ID."""
-        if not isinstance(method_id, str) or not method_id.strip():
-            raise ValueError("Method ID must be non-empty.")
-        if not callable(constructor):
-            raise TypeError("Constructor must be callable.")
-        self._constructors[method_id] = constructor
+################################################################################
+# The Factory
+################################################################################
+def hold_detector_factory(hold_detector_name: str, config: _ConfigArgs = dict()):
+    if hold_detector_name not in _AVAILABLE_HOLD_DETECTORS_MAP:
+        raise UnknownHoldDetectorError(
+            f"'{hold_detector_name}' isn't a known hold detector. Try one of {AVAILABLE_HOLD_DETECTORS}"
+        )
 
-    def available_methods(self) -> tuple[str, ...]:
-        """Return the registered detector method IDs."""
-        return tuple(sorted(self._constructors))
-
-    def create(
-        self, detector_method: str, config: Mapping[str, Any] | None = None
-    ) -> HoldDetector:
-        """Create a detector from its method ID and configuration."""
-        if detector_method not in self._constructors:
-            raise UnknownHoldDetectorError(
-                f"Unknown hold detector '{detector_method}'. Available methods: {', '.join(self.available_methods())}."
-            )
-        if config is not None and not isinstance(config, Mapping):
-            raise InvalidHoldDetectorConfigError("Config must be a mapping.")
-        try:
-            return self._constructors[detector_method](dict(config or {}))
-        except InvalidHoldDetectorConfigError:
-            raise
-        except (TypeError, ValueError) as error:
-            raise InvalidHoldDetectorConfigError(str(error)) from error
-
-    @staticmethod
-    def _create_sam_hold(config: Mapping[str, Any]) -> HoldDetector:
-        from .sam3_hold_detector import SAMHoldDetector
-
-        return SAMHoldDetector(**config)
+    return _AVAILABLE_HOLD_DETECTORS_MAP[hold_detector_name](config)

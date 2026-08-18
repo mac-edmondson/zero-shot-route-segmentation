@@ -99,6 +99,10 @@ class Hold:
             raise TypeError("Hold values must use shared data models.")
         object.__setattr__(self, "attributes", MappingProxyType(dict(self.attributes)))
 
+    def __hash__(self) -> int:
+        # The only thing that truly defines a hold is it's polygon.
+        return hash(self.polygon)
+
     def get_crop(self, image: Image) -> Image:
         if not isinstance(image, PILImage.Image):
             raise TypeError("image must be PIL.Image.Image.")
@@ -137,9 +141,3 @@ class Hold:
 class Route:
     holds: set[Hold]
     route_id: int
-
-    # TODO: Implement
-    def mark_route(self, image: Image) -> Image: ...
-
-
-# TODO: Define output objects for pipeline results.
