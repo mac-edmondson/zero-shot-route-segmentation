@@ -1,17 +1,17 @@
 # EvaluationSuite Interface
 
-**Depends on:** [RouteDetectionPipeline](route-detection-pipeline.md), [HoldDetector](hold-detector.md), [RouteClassifier](route-classifier.md), [DataPreprocessingPipeline](data-preprocessing-pipeline.md)
+**Depends on:** [RouteDiscriminatorPipeline](route-discriminator-pipeline.md), [HoldDetector](hold-detector.md), [RouteDiscriminator](route-discriminator.md), [DataPreprocessingPipeline](data-preprocessing-pipeline.md)
 **Consumed by:** offline experiment tooling and [Dashboard Backend](dashboard-backend.md)
 
 ## 1. Responsibility
 
 Run reproducible evaluations and gather results for:
 
-- full route-detection pipelines;
+- full route-discriminator pipelines;
 - hold detectors in isolation;
-- route classifiers in isolation;
+- route discriminators in isolation;
 - clean vs distorted inputs;
-- classifier/configuration variants such as color-only, color+spatial, DINO-only, and color+spatial+DINO.
+- discriminator/configuration variants such as color-only, color+spatial, DINO-only, and color+spatial+DINO.
 
 ## 2. Specification
 
@@ -36,4 +36,4 @@ This provenance is formalized in [data-models.md](interfaces/data-models.md) and
 
 ### 5. Configuration identity
 
-Every swappable model or algorithm SHOULD expose a stable `implementation_id` and a serializable configuration. Evaluation reports MUST record both, so a result can be tied to the exact detector/classifier variant, including board-mentioned conditions such as color-only, color+spatial, DINO-only, and color+spatial+DINO.
+Every swappable model or algorithm SHOULD expose a stable `implementation_id` and a serializable configuration. Evaluation reports MUST record both, so a result can be tied to the exact detector/discriminator variant, including board-mentioned conditions such as color-only, color+spatial, DINO-only, and color+spatial+DINO.

@@ -13,7 +13,7 @@ class PipelineDescriptor:
     classifier_config: dict
 
 
-class RouteDetectionPipeline:
+class RouteDiscriminatorPipeline:
     def __init__(
         self,
         hold_detector: HoldDetector,

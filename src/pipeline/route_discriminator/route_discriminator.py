@@ -11,6 +11,12 @@ from ..hold_detector.hold_detector import BatchAlignmentError
 from ..interfaces.data_models import Hold, Image, Route
 
 
+class UnknownRouteDiscriminatorError(ValueError): ...
+
+
+class InvalidRouteDiscriminatorConfigError(ValueError): ...
+
+
 class RouteDiscriminator(Protocol):
     @property
     def implementation_id(self) -> str: ...
