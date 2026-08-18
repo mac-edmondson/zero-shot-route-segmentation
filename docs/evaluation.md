@@ -58,13 +58,17 @@ Text-only detections occurred only in `0003.jpg`: 0 for red, 1 for blue and gree
 
 ## Mask R-CNN + TripletNet Kaggle inference validation
 
-An inference-only validation was attempted on 18 August 2026; it was not an accuracy or original-pipeline-equivalence evaluation.
+This is an inference-health validation, not an accuracy or original-pipeline-equivalence evaluation.
 
-- Dataset: tomasslama/indoor-climbing-gym-hold-segmentation via KaggleHub.
-- Intended selection: the first 15 supported image files in sorted relative-path order, with paths and SHA-256 hashes recorded temporarily.
-- Compute: A40 Slurm job 4043643 on a0429, using the LIT Conda environment; CUDA was available and temporary runtime dependencies installed successfully.
-- Result: KaggleHub timed out while connecting to api.kaggle.com to resolve the dataset. No images were downloaded or selected, and neither Mask R-CNN nor TripletNet model loading or inference was reached.
+- Dataset: tomasslama/indoor-climbing-gym-hold-segmentation, version 4, downloaded with KaggleHub under root tmp/.
+- Inputs: the first 15 sorted JPEGs in bh-phone (000.jpg through 014.jpg).
+- Compute: A40 Slurm job 4043742 on a0225 with CUDA available; Detectron2 runtime dependencies were installed under tmp/ only.
+- Model loading: Mask R-CNN loaded in 21.027 s; TripletNet loaded in 1.673 s. The initial ImageNet ResNet-50 backbone download was retained under tmp/.
 
-**Verdict: BLOCKED — dataset access unavailable.** This is a network-access failure, not evidence of an inference or model incompatibility. The temporary job workspace, logs, dependency target, and any cache were deleted after this result was recorded.
-
-Rerun after Kaggle API access is available; retain the same 15-image deterministic selection rule and A40 configuration.
+| Measure | Result |
+| --- | ---: |
+| Images completed | 15 / 15 |
+| Holds | 1,490 (99–100/image) |
+| Routes | 151 (8–13/image) |
+| Mask R-CNN mean inference | 1.059 s/image |
+| Mask R-CNN steady-state mean | 0.866 s/image |
