@@ -8,7 +8,7 @@ import numpy as np
 import torch
 from PIL import Image, ImageDraw
 from ..interfaces.data_models import Hold, Route
-from .route_classifier import BatchAlignmentError
+from ..interfaces.route_classifier import BatchAlignmentError
 
 class TripletRouteClassifier:
     implementation_id="triplet_route_classifier"

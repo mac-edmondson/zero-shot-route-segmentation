@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 import torch
 from PIL import Image
-from pipeline.hold_detector.hold_detector import BatchAlignmentError, InvalidImageError
+from pipeline.interfaces.hold_detector import BatchAlignmentError, InvalidImageError
 from pipeline.hold_detector.mask_rcnn_hold_detector import MaskRCNNHoldDetector
 
 class Instances:

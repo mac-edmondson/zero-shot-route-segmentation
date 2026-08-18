@@ -58,6 +58,6 @@ class HoldDetectorFactory:
 
     @staticmethod
     def _create_sam_hold(config: Mapping[str, Any]) -> HoldDetector:
-        from .sam3_hold_detector import SAMHoldDetector
+        from ..hold_detector.sam3_hold_detector import SAMHoldDetector
 
         return SAMHoldDetector(**config)

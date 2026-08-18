@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Protocol
 
-from ..interfaces.data_models import Hold, Image
+from .data_models import Hold, Image
 
 
 class HoldDetectionError(RuntimeError):

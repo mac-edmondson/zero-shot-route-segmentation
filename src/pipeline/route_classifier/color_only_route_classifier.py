@@ -2,7 +2,7 @@ import cv2, numpy as np
 from collections.abc import Sequence
 from PIL import Image,ImageDraw
 from ..interfaces.data_models import Hold,Image as Img,Route
-from .route_classifier import BatchAlignmentError
+from ..interfaces.route_classifier import BatchAlignmentError
 class ColorOnlyRouteClassifier:
  implementation_id="color_only_classifier"
  def __init__(self,n_clusters:int,clustering_method="kmeans",random_state:int|None=0,**config):

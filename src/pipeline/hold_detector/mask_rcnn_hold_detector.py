@@ -9,7 +9,7 @@ import numpy as np
 import torch
 from PIL import Image, ImageDraw
 from ..interfaces.data_models import Coordinate, Hold, Polygon
-from .hold_detector import BatchAlignmentError, InvalidImageError
+from ..interfaces.hold_detector import BatchAlignmentError, InvalidImageError
 
 class MaskRCNNHoldDetector:
     implementation_id = "mask_rcnn_hold_detector"

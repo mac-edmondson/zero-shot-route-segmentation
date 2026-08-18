@@ -3,8 +3,8 @@ from PIL import Image, ImageDraw
 
 from pipeline.interfaces.data_models import Coordinate, Hold, Polygon
 from pipeline.route_classifier.color_only_route_classifier import ColorOnlyRouteClassifier
-from pipeline.route_classifier.route_classifier import BatchAlignmentError
-from pipeline.route_classifier.route_classifier_factory import (
+from pipeline.interfaces.route_classifier import BatchAlignmentError
+from pipeline.interfaces.route_classifier_factory import (
     InvalidRouteClassifierConfigError,
     RouteClassifierFactory,
     UnknownRouteClassifierError,

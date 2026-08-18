@@ -20,10 +20,10 @@ class RouteClassifierFactory:
   except (TypeError,ValueError) as error: raise InvalidRouteClassifierConfigError(str(error)) from error
  @staticmethod
  def _color(config):
-  from .color_only_route_classifier import ColorOnlyRouteClassifier
+  from ..route_classifier.color_only_route_classifier import ColorOnlyRouteClassifier
   return ColorOnlyRouteClassifier(**config)
  @staticmethod
  def _triplet(config):
-  from .triplet_route_classifier import TripletRouteClassifier
+  from ..route_classifier.triplet_route_classifier import TripletRouteClassifier
   return TripletRouteClassifier(**config)
 

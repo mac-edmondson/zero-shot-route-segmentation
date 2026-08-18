@@ -14,8 +14,8 @@ from PIL import Image, ImageDraw
 from transformers import Sam3VideoModel, Sam3VideoProcessor
 
 from ..interfaces.data_models import Coordinate, Hold, Polygon
-from .hold_detector import BatchAlignmentError, InvalidImageError
-from .hold_detector_factory import InvalidHoldDetectorConfigError
+from ..interfaces.hold_detector import BatchAlignmentError, InvalidImageError
+from ..interfaces.hold_detector_factory import InvalidHoldDetectorConfigError
 
 Exemplar: TypeAlias = tuple[Image.Image, np.ndarray]
 
