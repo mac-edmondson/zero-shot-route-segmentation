@@ -55,3 +55,16 @@ Ten independent A40 jobs ran the same nine images with five prompts: `red climbi
 | `orange climbing holds` | 2 | 0.607 | 31 | 5.391 |
 
 Text-only detections occurred only in `0003.jpg`: 0 for red, 1 for blue and green, and 2 for yellow and orange. Every five-exemplar arm produced the same per-image counts: `0000` 3, `0001` 4, `0002` 3, `0003` 4, `0004` 1, `0005` 4, `0006` 5, `0007` 3, and `0008` 4. Thus, for this fixed exemplar set, color wording did not change the five-exemplar result. Raw job scripts, logs, and CSV/JSON summaries are intentionally temporary under `tmp/color_prompt_sweep/`.
+
+## Mask R-CNN + TripletNet Kaggle inference validation
+
+An inference-only validation was attempted on 18 August 2026; it was not an accuracy or original-pipeline-equivalence evaluation.
+
+- Dataset: tomasslama/indoor-climbing-gym-hold-segmentation via KaggleHub.
+- Intended selection: the first 15 supported image files in sorted relative-path order, with paths and SHA-256 hashes recorded temporarily.
+- Compute: A40 Slurm job 4043643 on a0429, using the LIT Conda environment; CUDA was available and temporary runtime dependencies installed successfully.
+- Result: KaggleHub timed out while connecting to api.kaggle.com to resolve the dataset. No images were downloaded or selected, and neither Mask R-CNN nor TripletNet model loading or inference was reached.
+
+**Verdict: BLOCKED — dataset access unavailable.** This is a network-access failure, not evidence of an inference or model incompatibility. The temporary job workspace, logs, dependency target, and any cache were deleted after this result was recorded.
+
+Rerun after Kaggle API access is available; retain the same 15-image deterministic selection rule and A40 configuration.
