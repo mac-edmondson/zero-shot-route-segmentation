@@ -20,6 +20,8 @@ class Coordinate:
     y: int
 
     def __post_init__(self) -> None:
+        if any(isinstance(value, bool) or not isinstance(value, int) for value in (self.x, self.y)):
+            raise TypeError("Coordinates must be integer pixel positions.")
         if self.x < 0 or self.y < 0:
             raise ValueError(
                 f"x or y was less than 0. This doesn't make any since for a coordinate. {self.x=} {self.y=}"
@@ -35,12 +37,10 @@ class Polygon:
 
     def __post_init__(self) -> None:
         points = tuple(self.points)
-        distinct_points = {(p.x, p.y) for p in points}
-        if len(distinct_points) < 3:
-            raise ValueError("A polygon needs at least three distinct points.")
-
         if any(not isinstance(p, Coordinate) for p in points):
             raise TypeError("A polygon should be made-up of Coordinates!")
+        if len({(p.x, p.y) for p in points}) < 3:
+            raise ValueError("A polygon needs at least three distinct points.")
 
         object.__setattr__(self, "points", points)
 
@@ -53,9 +53,9 @@ class RGBColor:
 
     def __post_init__(self) -> None:
 
-        if not any(isinstance(v, int) for v in (self.r, self.g, self.b)):
+        if any(isinstance(v, bool) or not isinstance(v, int) for v in (self.r, self.g, self.b)):
             raise TypeError("RGB Values should be made up of integers!")
-        if any(0 <= v <= 255 for v in (self.r, self.g, self.b)):
+        if any(not 0 <= v <= 255 for v in (self.r, self.g, self.b)):
             raise ValueError("RGB values must be integers in [0, 255].")
 
 
@@ -93,10 +93,10 @@ class Hold:
         )
 
     def __post_init__(self) -> None:
-        if not isinstance(self.centroid, Coordinate) or not isinstance(
-            self.polygon, Polygon
-        ):
+        if not isinstance(self.polygon, Polygon):
             raise TypeError("Hold values must use shared data models.")
+        if not isinstance(self.attributes, Mapping):
+            raise TypeError("Hold attributes must be a mapping.")
         object.__setattr__(self, "attributes", MappingProxyType(dict(self.attributes)))
 
     def get_crop(self, image: Image) -> Image:

@@ -7,7 +7,7 @@ import cv2
 import numpy as np
 import torch
 from PIL import Image, ImageDraw
-from .data_models import Hold, Route
+from ..interfaces.data_models import Hold, Route
 from .route_classifier import BatchAlignmentError
 
 class TripletRouteClassifier:

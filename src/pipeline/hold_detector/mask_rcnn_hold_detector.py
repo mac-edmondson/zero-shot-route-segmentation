@@ -87,7 +87,7 @@ class MaskRCNNHoldDetector:
         contours, _ = cv2.findContours(np.asarray(mask, dtype=np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         if not contours: return None
         contour = max(contours, key=cv2.contourArea)
-        try: polygon = Polygon(tuple(Coordinate(float(x), float(y)) for x, y in contour.reshape(-1, 2)))
+        try: polygon = Polygon(tuple(Coordinate(int(x), int(y)) for x, y in contour.reshape(-1, 2)))
         except ValueError: return None
         return Hold(polygon, {"mask": np.asarray(mask, dtype=bool).copy(), "confidence": confidence,
                               "class_id": class_id, "class_name": cls._CLASS_NAMES[class_id],

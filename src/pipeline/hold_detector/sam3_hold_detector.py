@@ -349,13 +349,10 @@ class SAMHoldDetector(SAM3HoldWrapper):
             if not contours:
                 continue
             contour = max(contours, key=cv2.contourArea)
-            moments = cv2.moments(contour)
-            if moments["m00"] == 0:
-                continue
             try:
                 polygon = Polygon(
                     tuple(
-                        Coordinate(float(x), float(y))
+                        Coordinate(int(x), int(y))
                         for x, y in contour.reshape(-1, 2)
                     )
                 )
@@ -363,9 +360,6 @@ class SAMHoldDetector(SAM3HoldWrapper):
                 continue
             holds.append(
                 Hold(
-                    Coordinate(
-                        moments["m10"] / moments["m00"], moments["m01"] / moments["m00"]
-                    ),
                     polygon,
                     {"mask": np.asarray(mask, dtype=bool).copy(), "mode": mode},
                 )

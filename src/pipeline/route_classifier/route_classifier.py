@@ -1,5 +1,5 @@
 from typing import Protocol, Sequence
-from .data_models import Hold, Image, Route
+from ..interfaces.data_models import Hold, Image, Route
 class RouteClassificationError(RuntimeError): pass
 class BatchAlignmentError(RouteClassificationError): pass
 class RouteClassifier(Protocol):

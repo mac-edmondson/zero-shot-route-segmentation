@@ -1,7 +1,7 @@
 import cv2, numpy as np
 from collections.abc import Sequence
 from PIL import Image,ImageDraw
-from .data_models import Hold,Image as Img,Route
+from ..interfaces.data_models import Hold,Image as Img,Route
 from .route_classifier import BatchAlignmentError
 class ColorOnlyRouteClassifier:
  implementation_id="color_only_classifier"
