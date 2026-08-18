@@ -17,7 +17,7 @@ services:
         bind:
           selinux: Z
     healthcheck:
-      test: [ "CMD", "service", "nginx", "status" ]
+      test: [ "CMD", "curl", "-f", "http://localhost/" ]
       interval: 2m
       timeout: 30s
       retries: 5
