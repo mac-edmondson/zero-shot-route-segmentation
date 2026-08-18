@@ -1,9 +1,11 @@
 """Factory and registry for hold detectors."""
 
 from __future__ import annotations
+
 from collections.abc import Callable, Mapping
 from typing import Any
-from ..interfaces.hold_detector import HoldDetector
+
+from .hold_detector import HoldDetector
 
 
 class UnknownHoldDetectorError(ValueError):
@@ -56,6 +58,6 @@ class HoldDetectorFactory:
 
     @staticmethod
     def _create_sam_hold(config: Mapping[str, Any]) -> HoldDetector:
-        from ..interfaces.sam3_hold_detector import SAMHoldDetector
+        from .sam3_hold_detector import SAMHoldDetector
 
         return SAMHoldDetector(**config)

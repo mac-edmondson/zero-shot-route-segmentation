@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Protocol, Sequence
+from collections.abc import Sequence
+from typing import Protocol
 
 from ..interfaces.data_models import Hold, Image
 
@@ -25,9 +26,11 @@ class HoldDetector(Protocol):
 
     def get_holds(self, images: Sequence[Image]) -> list[list[Hold]]:
         """Return one detected-hold list for every input image."""
+        ...
 
     @staticmethod
     def mark_holds(
         images: Sequence[Image], holds: Sequence[Sequence[Hold]]
     ) -> list[Image]:
         """Render hold overlays without changing detection behavior."""
+        ...
