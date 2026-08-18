@@ -10,34 +10,9 @@ TODO: Port to code and clean
 
 Detect all climbing holds visible in each input image and return their geometry (and optional metadata) without deciding which route they belong to.
 
-## 2. Protocol
+## 2. Interface Contract, self-documenting
 
-```python
-from typing import Protocol, Sequence
-from .data_models import Hold, Image
-
-class HoldDetector(Protocol):
-    @property
-    def implementation_id(self) -> str: ...
-
-    def get_holds(
-        self,
-        images: Sequence[Image],
-    ) -> list[list[Hold]]:
-        """Return one list of detected holds per input image."""
-
-    @staticmethod
-    def mark_holds(
-        images: Sequence[Image],
-        holds: Sequence[Sequence[Hold]],
-    ) -> list[Image]:
-        """Return visualization images with hold detections overlaid."""
-```
-
-### Board compatibility
-
-- `get_holds` corresponds to `getHolds(imgs: List[images]) -> List[List[Holds]]`.
-- `mark_holds` corresponds to the static helper described as marking/segmenting holds.
+Implementation: [/src/pipeline/hold_detector/hold_detector.py](/src/pipeline/hold_detector/hold_detector.py)
 
 ## 3. Contract
 
