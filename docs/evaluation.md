@@ -72,3 +72,19 @@ This is an inference-health validation, not an accuracy or original-pipeline-equ
 | Routes | 151 (8–13/image) |
 | Mask R-CNN mean inference | 1.059 s/image |
 | Mask R-CNN steady-state mean | 0.866 s/image |
+
+## Original Mask R-CNN reference comparison
+
+The original Indoor Climbing Hold and Route Segmentation repository was cloned
+temporarily at commit `27ba65fcc2982e6d01e7556f1882df72e5fb1f46`. It contains
+the original Detectron2 `DefaultPredictor` integration but no published model
+artifacts, so both sides deliberately used this repository's identical local
+`experiment_config.yml` and `model_final.pth`.
+
+On the first 15 sorted Kaggle `bh-phone` images, A40 job `4043861` (node
+`a0324`) compared hold-class output from the original `DefaultPredictor` with
+`MaskRCNNHoldDetector`. Results were exact: all 15 image-level hold counts
+matched, every ordered binary mask had IoU `1.0`, and the maximum absolute
+confidence difference was `0.0`.
+
+The initial failed comparison revealed that the adapter omitted Detectron2's

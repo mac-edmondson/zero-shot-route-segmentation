@@ -28,7 +28,7 @@ class MaskRCNNHoldDetector:
         if self.device.type == "cuda" and not torch.cuda.is_available(): raise RuntimeError("CUDA was requested, but it is not available.")
         self.score_threshold, self.include_volumes = score_threshold, include_volumes
         self.detectron2_source = Path(detectron2_source) if detectron2_source else None
-        self.extra_config, self.model = dict(config), None
+        self.extra_config, self.model, self.augmentation = dict(config), None, None
 
     @property
     def configuration(self) -> dict[str, object]:
@@ -36,10 +36,11 @@ class MaskRCNNHoldDetector:
                 "score_threshold": self.score_threshold, "include_volumes": self.include_volumes,
                 "detectron2_source": str(self.detectron2_source) if self.detectron2_source else None, **self.extra_config}
 
-    def _detectron2_components(self) -> tuple[Any, Any, Any]:
+    def _detectron2_components(self) -> tuple[Any, Any, Any, Any]:
         try:
             from detectron2.checkpoint import DetectionCheckpointer
             from detectron2.config import get_cfg
+            from detectron2.data import transforms as T
             from detectron2.modeling import build_model
         except ModuleNotFoundError as error:
             if self.detectron2_source is None or not (self.detectron2_source / "detectron2").is_dir(): raise RuntimeError("Detectron2 is unavailable. Install it or set detectron2_source.") from error
@@ -48,16 +49,18 @@ class MaskRCNNHoldDetector:
                 from detectron2.checkpoint import DetectionCheckpointer
                 from detectron2.config import get_cfg
                 from detectron2.modeling import build_model
+                from detectron2.data import transforms as T
             except (ImportError, OSError) as fallback: raise RuntimeError(f"Detectron2 at '{self.detectron2_source}' could not be imported; build it for this environment.") from fallback
-        return get_cfg, build_model, DetectionCheckpointer
+        return get_cfg, build_model, DetectionCheckpointer, T
 
     def load_model(self) -> None:
         for path, name in ((self.config_path, "configuration"), (self.weights_path, "weights")):
             if not path.is_file(): raise FileNotFoundError(f"Mask R-CNN {name} file was not found at '{path}'.")
-        get_cfg, build_model, checkpointer = self._detectron2_components()
+        get_cfg, build_model, checkpointer, transforms = self._detectron2_components()
         cfg = get_cfg(); cfg.merge_from_file(str(self.config_path)); cfg.MODEL.WEIGHTS = str(self.weights_path); cfg.MODEL.DEVICE = str(self.device)
         if self.score_threshold is not None: cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = self.score_threshold
         cfg.freeze(); self.model = build_model(cfg); checkpointer(self.model).load(cfg.MODEL.WEIGHTS); self.model.eval()
+        self.augmentation = transforms.ResizeShortestEdge([cfg.INPUT.MIN_SIZE_TEST, cfg.INPUT.MIN_SIZE_TEST], cfg.INPUT.MAX_SIZE_TEST)
 
     @staticmethod
     def _validate_images(images: Sequence[Image.Image]) -> None:
@@ -69,7 +72,8 @@ class MaskRCNNHoldDetector:
         inputs = []
         for image in images:
             bgr = np.asarray(image.convert("RGB"))[:, :, ::-1].copy(); height, width = bgr.shape[:2]
-            inputs.append({"image": torch.as_tensor(bgr.astype("float32").transpose(2, 0, 1)).to(self.device), "height": height, "width": width})
+            resized = self.augmentation.get_transform(bgr).apply_image(bgr) if self.augmentation else bgr
+            inputs.append({"image": torch.as_tensor(resized.astype("float32").transpose(2, 0, 1)).to(self.device), "height": height, "width": width})
         with torch.no_grad(): outputs = self.model(inputs)
         return [self._instances_to_holds(output["instances"]) for output in outputs]
 
