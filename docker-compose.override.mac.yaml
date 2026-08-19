@@ -10,3 +10,6 @@ services:
         read_only: true
         bind:
           selinux: Z
+  backend:
+    build:
+      target: base
