@@ -5,11 +5,10 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Protocol
 
-from ..interfaces.data_models import Hold, Image
+from PIL import Image, ImageDraw
 
-
-class InvalidHoldDetectorConfigError(ValueError):
-    """Raised when there is an invalid configuration within a hold detector"""
+from ..interfaces.data_models import Hold
+from ..interfaces.errors import BatchAlignmentError
 
 
 class HoldDetector(Protocol):
