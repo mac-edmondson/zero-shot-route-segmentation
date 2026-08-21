@@ -22,6 +22,14 @@ _ConfigArgs = Mapping[str, Any]
 _Constructor = Callable[[_ConfigArgs], RouteDiscriminator]
 
 
+def _create_triplet_route_discriminator(
+    config: Mapping[str, Any] = dict(),
+) -> RouteDiscriminator:
+    from .triplet_route_discriminator import TripletRouteDiscriminator
+
+    return TripletRouteDiscriminator(**config)
+
+
 def _create_mock_route_discriminator(
     config: Mapping[str, Any] = dict(),
 ) -> RouteDiscriminator:
@@ -31,7 +39,8 @@ def _create_mock_route_discriminator(
 
 
 _AVAILABLE_ROUTE_DISCRIMINATORS_MAP: Mapping[str, _Constructor] = {
-    "mock": _create_mock_route_discriminator
+    "Triplet MLP": _create_triplet_route_discriminator,
+    "Mock": _create_mock_route_discriminator,
 }
 AVAILABLE_ROUTE_DISCRIMINATORS = list(_AVAILABLE_ROUTE_DISCRIMINATORS_MAP.keys())
 
