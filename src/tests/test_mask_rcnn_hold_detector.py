@@ -3,6 +3,7 @@ import pytest
 import torch
 from PIL import Image
 
+from pipeline.hold_detector.hold_detector import HoldDetector
 from pipeline.hold_detector.mask_rcnn_hold_detector import MaskRCNNHoldDetector
 from pipeline.interfaces.errors import BatchAlignmentError, InvalidImageError
 
@@ -79,4 +80,4 @@ def test_invalid_input_and_overlay_alignment():
     with pytest.raises(InvalidImageError):
         detector.get_holds(["bad"])
     with pytest.raises(BatchAlignmentError):
-        detector.mark_holds([Image.new("RGB", (1, 1))], [])
+        HoldDetector.mark_holds([Image.new("RGB", (1, 1))], [])

@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Protocol
 
-from PIL import ImageDraw
+from PIL import Image as PILImage, ImageDraw
 
 from ..interfaces.data_models import Hold, Image, Route
 from ..interfaces.errors import BatchAlignmentError
@@ -46,7 +46,8 @@ class RouteDiscriminator(Protocol):
         result = []
         for image, detected_routes in zip(images, routes, strict=True):
             overlay = image.convert("RGB").copy()
-            draw = ImageDraw.Draw(overlay)
+            fill_overlay = PILImage.new("RGBA", overlay.size, (0, 0, 0, 0))
+            fill_draw = ImageDraw.Draw(fill_overlay)
             for route_index, route in enumerate(detected_routes):
                 color = palette[route_index % len(palette)]
                 for hold in route.holds:
@@ -54,6 +55,13 @@ class RouteDiscriminator(Protocol):
                         (point.x, point.y)
                         for point in (*hold.polygon.points, hold.polygon.points[0])
                     ]
-                    draw.line(points, fill=color, width=3)
+                    fill_draw.polygon(points, fill=(*color, 102))
+            overlay = PILImage.alpha_composite(overlay.convert("RGBA"), fill_overlay).convert("RGB")
+            draw = ImageDraw.Draw(overlay)
+            for route_index, route in enumerate(detected_routes):
+                color = palette[route_index % len(palette)]
+                for hold in route.holds:
+                    points = [(point.x, point.y) for point in (*hold.polygon.points, hold.polygon.points[0])]
+                    draw.line(points, fill=color, width=5)
             result.append(overlay)
         return result

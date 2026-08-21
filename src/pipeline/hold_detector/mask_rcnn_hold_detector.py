@@ -194,25 +194,3 @@ class MaskRCNNHoldDetector:
                 "implementation_id": cls.implementation_id,
             },
         )
-
-    @staticmethod
-    def mark_holds(
-        images: Sequence[Image.Image], holds: Sequence[Sequence[Hold]]
-    ) -> list[Image.Image]:
-        if len(images) != len(holds):
-            raise BatchAlignmentError("images and holds must align.")
-        result = []
-        for image, detected in zip(images, holds, strict=True):
-            overlay = image.convert("RGB").copy()
-            draw = ImageDraw.Draw(overlay)
-            for hold in detected:
-                draw.line(
-                    [
-                        (p.x, p.y)
-                        for p in (*hold.polygon.points, hold.polygon.points[0])
-                    ],
-                    fill=(255, 80, 0),
-                    width=3,
-                )
-            result.append(overlay)
-        return result

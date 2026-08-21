@@ -34,3 +34,6 @@ tmp/
 
 # Other
 Project\ stuff/
+
+#output files
+data/test-rcnn-pipeline
