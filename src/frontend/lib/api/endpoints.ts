@@ -1,7 +1,7 @@
 import { API_BASE_URL } from "./config";
 import { request, requestBlob } from "./client";
 import type { RouteDetectionApiClient } from "./contract";
-import type { Coordinate, Segment } from "./types";
+import type { Coordinate, InferenceResult, Segment } from "./types";
 
 /** One entry returned by Nginx's JSON autoindex for the gallery directory. */
 interface GalleryDirectoryEntry {
@@ -21,6 +21,18 @@ interface DetectSegmentsResponse {
     segment_id: string;
     polygon: { points: Coordinate[] };
   }[];
+}
+
+/** Wire shape returned by `POST /pipeline/infer/working` (src/backend/schemas.py). */
+interface InferWorkingResponse {
+  routes: {
+    route_id: number;
+    holds: {
+      centroid: Coordinate;
+      polygon: { points: Coordinate[] };
+    }[];
+  }[];
+  inference_metrics: Record<string, number>;
 }
 
 /**
@@ -84,8 +96,38 @@ export const restApiClient: RouteDetectionApiClient = {
     return request("/image/working/augment", { method: "POST", body });
   },
 
-  inferWorkingPipeline(config) {
-    return request("/pipeline/infer/working", { method: "POST", body: config });
+  async inferWorkingPipeline(image, augmentation, config) {
+    const form = new FormData();
+    form.append("image", image);
+    form.append("lighting_percent", String(augmentation.lightingPercent));
+    form.append(
+      "segments",
+      JSON.stringify(
+        augmentation.segments.map((segment) => ({
+          segment_id: segment.segmentId,
+          chalk_percent: segment.chalkPercent,
+        })),
+      ),
+    );
+    form.append("hold_detector", config.holdDetector);
+    form.append("route_discriminator", config.routeClassifier);
+
+    const raw = await request<InferWorkingResponse>("/pipeline/infer/working", {
+      method: "POST",
+      body: form,
+    });
+
+    return {
+      status: "completed",
+      routes: raw.routes.map((route) => ({
+        routeId: route.route_id,
+        holds: route.holds.map((hold) => ({
+          centroid: hold.centroid,
+          polygon: hold.polygon,
+        })),
+      })),
+      inferenceMetrics: raw.inference_metrics,
+    } satisfies InferenceResult;
   },
 
   getPipeline(signal) {

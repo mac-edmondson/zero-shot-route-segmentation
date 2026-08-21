@@ -211,10 +211,11 @@ export const mockApiClient: RouteDetectionApiClient = {
     return delay({ imageId: image.id, image: image.dataUrl });
   },
 
-  inferWorkingPipeline(config) {
-    if (!workingImageId) {
-      return Promise.reject(new ApiError("No working image set", 409));
-    }
+  inferWorkingPipeline(_image, _augmentation, config) {
+    // The mock has no real pipeline to run (like augmentWorkingImage above),
+    // so `_image`/`_augmentation` -- exactly what a real backend would need
+    // alongside `config` to actually detect anything -- go unused here;
+    // this just fabricates routes out of whatever's already in `segments`.
     // Record the effective config so a later `getPipeline()` reflects any
     // one-off override passed to this call, mirroring how a real backend
     // would persist "last used" pipeline settings.

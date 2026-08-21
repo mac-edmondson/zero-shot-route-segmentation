@@ -20,13 +20,37 @@ interface ImageCanvasProps {
    * of image-wide. */
   chalkBySegmentId: Record<string, number>;
   /** Points clicked but not yet submitted for detection. */
-  pendingPoints: Coordinate[];
-  webcamActive: boolean;
-  loading: boolean;
-  onCaptureFrame: (blob: Blob) => void;
-  onWebcamError: (message: string) => void;
+  pendingPoints?: Coordinate[];
+  webcamActive?: boolean;
+  loading?: boolean;
+  onCaptureFrame?: (blob: Blob) => void;
+  onWebcamError?: (message: string) => void;
   /** Coordinates are normalized to [0, 1] of the displayed image. */
-  onAddSegmentPoint: (coordinate: Coordinate) => void;
+  onAddSegmentPoint?: (coordinate: Coordinate) => void;
+  /**
+   * False for a read-only display -- the recognition page's carried-over
+   * augmented image, past the point of editing it further. Disables
+   * click-to-add-point and hides the numbered segment markers/pending-point
+   * dots, but keeps the lighting filter and chalk overlay showing (those
+   * *are* the augmentation, not editing affordances). Defaults to true.
+   */
+  interactive?: boolean;
+  /**
+   * False hides the accent hold-outline polygon, leaving only the chalk
+   * fill on top of the plain image -- used by the recognition page so the
+   * "here's where you clicked" outline doesn't linger once editing is
+   * done, while chalk (an actual augmentation the user applied) still
+   * shows. Defaults to true.
+   */
+  showHoldOutline?: boolean;
+  /**
+   * Extra SVG content stacked on top of the polygon/chalk overlay, still
+   * inside the same normalized [0, 1] coordinate box -- e.g. the
+   * recognition page's animated route-hold highlight. Kept as a generic
+   * slot rather than a route-specific prop so this component doesn't need
+   * to know what "routes" are.
+   */
+  overlay?: React.ReactNode;
 }
 
 /**
@@ -41,12 +65,15 @@ export function ImageCanvas({
   lightingPercent,
   segments,
   chalkBySegmentId,
-  pendingPoints,
-  webcamActive,
-  loading,
-  onCaptureFrame,
-  onWebcamError,
+  pendingPoints = [],
+  webcamActive = false,
+  loading = false,
+  onCaptureFrame = () => {},
+  onWebcamError = () => {},
   onAddSegmentPoint,
+  interactive = true,
+  showHoldOutline = true,
+  overlay,
 }: ImageCanvasProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -99,6 +126,7 @@ export function ImageCanvas({
   }
 
   function handleImageClick(event: React.MouseEvent<HTMLImageElement>) {
+    if (!interactive || !onAddSegmentPoint) return;
     const bounds = event.currentTarget.getBoundingClientRect();
     onAddSegmentPoint({
       x: (event.clientX - bounds.left) / bounds.width,
@@ -134,7 +162,7 @@ export function ImageCanvas({
           <img
             src={imageSrc}
             alt="Working climbing wall"
-            className={styles.image}
+            className={interactive ? styles.image : `${styles.image} ${styles.imageStatic}`}
             style={{ filter: `brightness(${1 + (lightingPercent / 100) * 0.9})` }}
             onClick={handleImageClick}
           />
@@ -145,13 +173,14 @@ export function ImageCanvas({
               preserveAspectRatio="none"
               aria-hidden
             >
-              {segments.map((segment) => (
-                <polygon
-                  key={segment.segmentId}
-                  className={styles.polygonShape}
-                  points={segment.polygon.map((p) => `${p.x},${p.y}`).join(" ")}
-                />
-              ))}
+              {showHoldOutline &&
+                segments.map((segment) => (
+                  <polygon
+                    key={segment.segmentId}
+                    className={styles.polygonShape}
+                    points={segment.polygon.map((p) => `${p.x},${p.y}`).join(" ")}
+                  />
+                ))}
               {segments.map((segment) => {
                 const chalkPercent = chalkBySegmentId[segment.segmentId] ?? 0;
                 if (chalkPercent <= 0) return null;
@@ -166,26 +195,29 @@ export function ImageCanvas({
               })}
             </svg>
           )}
-          {segments.map((segment, index) => {
-            const point = segment.coordinates[0];
-            if (!point) return null;
-            return (
+          {overlay}
+          {interactive &&
+            segments.map((segment, index) => {
+              const point = segment.coordinates[0];
+              if (!point) return null;
+              return (
+                <span
+                  key={segment.segmentId}
+                  className={styles.marker}
+                  style={{ left: `${point.x * 100}%`, top: `${point.y * 100}%` }}
+                >
+                  <span className={`${styles.markerLabel} mono`}>{index + 1}</span>
+                </span>
+              );
+            })}
+          {interactive &&
+            pendingPoints.map((point, index) => (
               <span
-                key={segment.segmentId}
-                className={styles.marker}
+                key={`pending-${index}`}
+                className={styles.pendingMarker}
                 style={{ left: `${point.x * 100}%`, top: `${point.y * 100}%` }}
-              >
-                <span className={`${styles.markerLabel} mono`}>{index + 1}</span>
-              </span>
-            );
-          })}
-          {pendingPoints.map((point, index) => (
-            <span
-              key={`pending-${index}`}
-              className={styles.pendingMarker}
-              style={{ left: `${point.x * 100}%`, top: `${point.y * 100}%` }}
-            />
-          ))}
+              />
+            ))}
           {loading && (
             <div className={styles.overlay}>
               <span className={styles.spinner} aria-hidden />

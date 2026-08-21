@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import { apiClient } from "@/lib/api";
-import type { Coordinate, Segment } from "@/lib/api";
+import type { Coordinate, Hold, InferenceResult, Segment } from "@/lib/api";
 import { AppHeader } from "@/components/header/AppHeader";
 import { ImageSourceButtons } from "@/components/image-source-buttons/ImageSourceButtons";
 import { GalleryPicker } from "@/components/gallery-picker/GalleryPicker";
@@ -29,6 +29,28 @@ const ROUTE_MODEL_OPTIONS = ["Color-only", "Color + Spatial", "Combined"];
  */
 const MODEL_SELECT_REVEAL_MS = 1875;
 
+/** Must match .modelSelectPanel's own transition-duration in
+ * WallImageWorkspace.module.css -- handleGoToRecognition plays that same
+ * leave transition (the same way handleBackToAugment already does) before
+ * the routes panel takes its place in the same grid cell. */
+const MODEL_SELECT_LEAVE_MS = 550;
+
+/** Per-hold reveal stagger, bottom-first (see holdsByRoute below). Purely a
+ * CSS animation-delay multiplier -- no JS timer depends on it. */
+const ROUTE_HOLD_REVEAL_STAGGER_MS = 70;
+/** Must match .highlightHoldLeave's animation-duration in
+ * WallImageWorkspace.module.css -- the one JS timer in the route-selection
+ * state machine below, which needs to know when the CSS fade-out actually
+ * finishes before swapping in the next route's holds. */
+const ROUTE_HOLD_LEAVE_MS = 220;
+
+// Same palette RouteDiscriminator.mark_routes uses server-side
+// (src/pipeline/route_discriminator/route_discriminator.py) -- so a route's
+// color here matches what a rendered overlay image would eventually use.
+const ROUTE_COLORS = ["#ff5000", "#00b4ff", "#b450ff", "#50dc50", "#ffc800", "#ff50b4"];
+
+type RouteHighlightPhase = "idle" | "active" | "exiting";
+
 function fileToDataUrl(file: File | Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -46,17 +68,23 @@ function createLocalImageId(): string {
 
 /**
  * The ROUTNet landing page (Project stuff/UI_page_1.png): pick or capture a
- * wall image, mark hold segments, adjust lighting/chalk, then hand off to
- * the recognition step. Talks only to `apiClient` (`@/lib/api`), which is
- * backed by an in-memory mock until the real backend
- * (docs/spec/pipeline/interfaces/dashboard-backend.md) exists.
+ * wall image, mark hold segments, adjust lighting/chalk, then run
+ * recognition on it -- all as phases of this one component/page, never a
+ * route change. That's deliberate, not an oversight: recognition needs the
+ * augmented image to keep showing in exactly the same spot, at exactly the
+ * same size, with no reload -- which a page navigation (even client-side)
+ * can't guarantee, since it unmounts/remounts the tree. ImageCanvas is
+ * mounted exactly once, for this component's whole lifetime; only its
+ * props (and the side panel next to it) change as the phase advances.
+ * Talks only to `apiClient` (`@/lib/api`), which is backed by an in-memory
+ * mock until the real backend (docs/spec/pipeline/interfaces/dashboard-backend.md)
+ * exists.
  */
 export function WallImageWorkspace() {
-  const router = useRouter();
   const [imageId, setImageId] = useState<string | null>(null);
   const [imageSrc, setImageSrc] = useState<string | null>(null);
-  /** Original image bytes, kept around so a detect call can send the whole
-   * image again -- the backend is stateless and never stores it. */
+  /** Original image bytes, kept around so a detect/infer call can send the
+   * whole image again -- the backend is stateless and never stores it. */
   const [imageFile, setImageFile] = useState<File | Blob | null>(null);
   const [segments, setSegments] = useState<Segment[]>([]);
   /** Points clicked but not yet sent for detection. */
@@ -75,6 +103,38 @@ export function WallImageWorkspace() {
   const [modelSelectEntered, setModelSelectEntered] = useState(false);
   const [holdModel, setHoldModel] = useState<string | null>(null);
   const [routeModel, setRouteModel] = useState<string | null>(null);
+  const [inferring, setInferring] = useState(false);
+
+  // Recognition results -- another phase of this same page, not a route
+  // (see the component docstring above).
+  const [recognitionResult, setRecognitionResult] = useState<InferenceResult | null>(null);
+  const [recognitionDone, setRecognitionDone] = useState(false);
+  const [routesPanelEntered, setRoutesPanelEntered] = useState(false);
+
+  // Locked-model slide: once Recognition succeeds, the two chosen models
+  // stop being editable and slide from the model-select row (right of the
+  // image) up into the toolbar's own reserved spot (above the image,
+  // below the header) -- see the FLIP-technique useLayoutEffect below.
+  // modelSelectRowRef is the "from" element (measured just before it
+  // starts fading out); lockedModelsRef is the "to" element (its real,
+  // laid-out position is the destination -- the slide is done by offsetting
+  // it with a transform and animating that back to none, not by moving it
+  // between containers).
+  const modelSelectRowRef = useRef<HTMLDivElement>(null);
+  const lockedModelsRef = useRef<HTMLDivElement>(null);
+  const modelSlideFromRectRef = useRef<DOMRect | null>(null);
+  const [showLockedModels, setShowLockedModels] = useState(false);
+
+  // Which route's holds are currently drawn on the image. selectedRouteId
+  // stays set through "exiting" (it hasn't been replaced yet at that
+  // point); queuedRouteId is only meaningful while exiting: null means "go
+  // to idle once the fade finishes", a routeId means "switch to that
+  // route's holds once the fade finishes". selectedHoldIndex drills into
+  // one specific hold within the currently-shown route (see selectHold).
+  const [selectedRouteId, setSelectedRouteId] = useState<number | null>(null);
+  const [routeHighlightPhase, setRouteHighlightPhase] = useState<RouteHighlightPhase>("idle");
+  const [queuedRouteId, setQueuedRouteId] = useState<number | null>(null);
+  const [selectedHoldIndex, setSelectedHoldIndex] = useState<number | null>(null);
 
   // Mount, wait a paint, then trigger -- without the gap there's no
   // "before" frame for the browser to animate from, so the toolbar's two
@@ -112,9 +172,68 @@ export function WallImageWorkspace() {
     };
   }, [showModelSelect]);
 
-  // Appears the moment either dropdown has a pick -- doesn't wait for both,
-  // per how this was asked for ("once the user selects any of the model").
-  const showRecognitionButton = holdModel !== null || routeModel !== null;
+  // Same "wait a paint, then trigger" entrance for the routes panel, once
+  // it's mounted (handleGoToRecognition below only flips recognitionDone
+  // after the model pickers have fully finished leaving).
+  useEffect(() => {
+    if (!recognitionDone) return;
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => setRoutesPanelEntered(true));
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+  }, [recognitionDone]);
+
+  // The slide itself -- a FLIP animation (First/Last/Invert/Play), not a
+  // move between DOM parents: lockedModelsRef is mounted directly in its
+  // real, final position (the toolbar's reserved spot), then immediately
+  // (before paint, hence useLayoutEffect) offset with `transform:
+  // translate()` by the delta from where the model-select row used to be,
+  // so the first frame painted still looks like it's over there. The next
+  // frame (double-rAF, this codebase's usual entrance-animation trick)
+  // clears that offset with a transition, which is what actually reads as
+  // "sliding" from the old spot to the new one. Only ever animates
+  // `transform` -- cheap, GPU-composited, same lesson as the route-holds
+  // overlay's earlier flicker fix.
+  useLayoutEffect(() => {
+    if (!showLockedModels) return;
+    const el = lockedModelsRef.current;
+    const fromRect = modelSlideFromRectRef.current;
+    if (!el || !fromRect) return;
+
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      return;
+    }
+
+    const toRect = el.getBoundingClientRect();
+    const dx = fromRect.left - toRect.left;
+    const dy = fromRect.top - toRect.top;
+
+    el.style.transition = "none";
+    el.style.transform = `translate(${dx}px, ${dy}px)`;
+
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        el.style.transition = `transform ${MODEL_SELECT_LEAVE_MS}ms var(--ease)`;
+        el.style.transform = "translate(0, 0)";
+      });
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+  }, [showLockedModels]);
+
+  // Appears only once BOTH dropdowns have a pick -- unlike the entrance
+  // timing above, this one can't be "either", because the Recognition call
+  // itself (handleGoToRecognition below) needs both to build a real
+  // PipelineConfig: the pipeline requires a hold_detector AND a
+  // route_discriminator to run at all.
+  const showRecognitionButton = holdModel !== null && routeModel !== null;
   const [recognitionEntered, setRecognitionEntered] = useState(false);
 
   useEffect(() => {
@@ -132,6 +251,77 @@ export function WallImageWorkspace() {
     };
   }, [showRecognitionButton]);
 
+  const routes = useMemo(() => recognitionResult?.routes ?? [], [recognitionResult]);
+
+  // Bottom-first per route: normalized y grows downward, so the largest y
+  // is the lowest hold on the image -- "the bottom hold should appear on
+  // the image 1st", per how this was asked for. Also determines the
+  // "Hold 1"/"Hold 2"/... numbering in the per-route hold buttons, so
+  // "Hold 1" is always the one that reveals first.
+  const holdsByRoute = useMemo(() => {
+    const map = new Map<number, Hold[]>();
+    for (const route of routes) {
+      map.set(route.routeId, [...route.holds].sort((a, b) => b.centroid.y - a.centroid.y));
+    }
+    return map;
+  }, [routes]);
+
+  /** Same color a route's card/swatch uses (ROUTE_COLORS, cycled by its
+   * position in the list) -- looked up by id rather than index so the
+   * image overlay (which only knows selectedRouteId) can match whichever
+   * card is actually highlighted. */
+  function colorForRoute(routeId: number): string {
+    const index = routes.findIndex((route) => route.routeId === routeId);
+    return ROUTE_COLORS[(index < 0 ? 0 : index) % ROUTE_COLORS.length];
+  }
+
+  function selectRoute(routeId: number) {
+    if (routeHighlightPhase === "idle") {
+      setSelectedRouteId(routeId);
+      setRouteHighlightPhase("active");
+      return;
+    }
+    if (routeHighlightPhase === "active") {
+      // Clicking the already-selected card again hides it (queuedRouteId
+      // stays null); clicking a different one queues the switch. Either
+      // way, the currently-shown holds have to vanish first.
+      setQueuedRouteId(routeId === selectedRouteId ? null : routeId);
+      setRouteHighlightPhase("exiting");
+      return;
+    }
+    // Already exiting -- just update what happens once that finishes,
+    // rather than starting a second overlapping exit.
+    setQueuedRouteId(routeId === selectedRouteId ? null : routeId);
+  }
+
+  /** Drills into one specific hold within the currently-shown route --
+   * click again to clear it. Purely a re-color/emphasis on the image (see
+   * .highlightHoldFocused); it doesn't affect which holds are visible. */
+  function selectHold(index: number) {
+    setSelectedHoldIndex((prev) => (prev === index ? null : index));
+  }
+
+  useEffect(() => {
+    if (routeHighlightPhase !== "exiting") return;
+    const timeout = setTimeout(() => {
+      setSelectedHoldIndex(null);
+      if (queuedRouteId != null) {
+        setSelectedRouteId(queuedRouteId);
+        setQueuedRouteId(null);
+        setRouteHighlightPhase("active");
+      } else {
+        setSelectedRouteId(null);
+        setRouteHighlightPhase("idle");
+      }
+    }, ROUTE_HOLD_LEAVE_MS);
+    return () => clearTimeout(timeout);
+  }, [routeHighlightPhase, queuedRouteId]);
+
+  const visibleHolds =
+    routeHighlightPhase !== "idle" && selectedRouteId != null
+      ? (holdsByRoute.get(selectedRouteId) ?? [])
+      : [];
+
   const loadImage = useCallback(async (file: File | Blob) => {
     setLoading(true);
     setError(null);
@@ -139,7 +329,7 @@ export function WallImageWorkspace() {
       // The image never goes to the backend here -- it's stateless and
       // never stores images (see the imageFile comment above); loading it
       // into the panel is purely a local render. The whole file only gets
-      // sent over the wire later, per detect call, via detectWorkingSegments.
+      // sent over the wire later, per detect/infer call.
       const dataUrl = await fileToDataUrl(file);
       setImageId(createLocalImageId());
       setImageSrc(dataUrl);
@@ -153,6 +343,14 @@ export function WallImageWorkspace() {
       setModelSelectEntered(false);
       setHoldModel(null);
       setRouteModel(null);
+      setRecognitionResult(null);
+      setRecognitionDone(false);
+      setRoutesPanelEntered(false);
+      setShowLockedModels(false);
+      setSelectedRouteId(null);
+      setRouteHighlightPhase("idle");
+      setQueuedRouteId(null);
+      setSelectedHoldIndex(null);
     } catch {
       setError("Couldn't load that image. Try again.");
     } finally {
@@ -217,6 +415,21 @@ export function WallImageWorkspace() {
     }
   }
 
+  // Shared by handleFinishAugment and handleGoToRecognition -- both send
+  // the same lighting/chalk snapshot to the backend (see the module-level
+  // comment on inferWorkingPipeline in lib/api/contract.ts for why
+  // Recognition has to carry this again instead of relying on Finish
+  // Augment having stored it server-side).
+  function buildAugmentationPayload() {
+    return {
+      lightingPercent: lighting,
+      segments: segments.map((segment) => ({
+        segmentId: segment.segmentId,
+        chalkPercent: chalkBySegmentId[segment.segmentId] ?? 0,
+      })),
+    };
+  }
+
   async function handleFinishAugment() {
     if (!imageId) {
       setError("Select a wall image first.");
@@ -225,13 +438,7 @@ export function WallImageWorkspace() {
     setLoading(true);
     setError(null);
     try {
-      await apiClient.augmentWorkingImage({
-        lightingPercent: lighting,
-        segments: segments.map((segment) => ({
-          segmentId: segment.segmentId,
-          chalkPercent: chalkBySegmentId[segment.segmentId] ?? 0,
-        })),
-      });
+      await apiClient.augmentWorkingImage(buildAugmentationPayload());
       // Stays on this same page -- no navigation. The step indicator shifts
       // to Recognition (shown as in-progress, not complete -- see
       // `handingOff` below) and the toolbar/segment panel fade out; nothing
@@ -244,17 +451,61 @@ export function WallImageWorkspace() {
     }
   }
 
-  // Reverses the handoff: the toolbar/segment panel's own CSS transitions
+  async function handleGoToRecognition() {
+    if (!imageFile || !holdModel || !routeModel) return;
+    setInferring(true);
+    setError(null);
+    try {
+      const augmentation = buildAugmentationPayload();
+      const result = await apiClient.inferWorkingPipeline(imageFile, augmentation, {
+        holdDetector: holdModel,
+        routeClassifier: routeModel,
+      });
+      setRecognitionResult(result);
+      // Measured now, while the row is still on-screen at its normal
+      // position -- this is the FLIP slide's "from" rect (see the
+      // useLayoutEffect above). Must happen before anything below starts
+      // that row fading out.
+      modelSlideFromRectRef.current = modelSelectRowRef.current?.getBoundingClientRect() ?? null;
+      setShowLockedModels(true);
+      // Same "play the leave transition, then swap what's mounted"
+      // technique handleBackToAugment already uses below for
+      // modelSelectPanel -- ImageCanvas itself never unmounts through any
+      // of this (see the component docstring), so the image can't
+      // reload/resize/jump; only this side panel's contents change, and
+      // only the polygon/click-outline overlay on the image (showHoldOutline
+      // below) goes away.
+      setModelSelectEntered(false);
+      setTimeout(() => {
+        setShowModelSelect(false);
+        setRecognitionDone(true);
+      }, MODEL_SELECT_LEAVE_MS);
+    } catch {
+      setError("Couldn't run recognition. Try again.");
+    } finally {
+      setInferring(false);
+    }
+  }
+
+  // Reverses the whole augment->model-select->recognition arc in one step,
+  // back to full editing. The toolbar/segment panel's own CSS transitions
   // are already bidirectional (removing the class they gained just plays
   // them backwards), so flipping augmentDone back to false is enough to
-  // bring those back on its own. The model-select panel doesn't have that
-  // built in (it's only ever mounted forward, via showModelSelect), so its
-  // own reverse fade is played here explicitly before unmounting it.
+  // bring those back on its own. modelSelectPanel/routesPanel don't have
+  // that built in (only ever mounted forward), so their own reverse fades
+  // are played here explicitly before unmounting them.
   function handleBackToAugment() {
     setAugmentDone(false);
+    setRecognitionDone(false);
+    setRoutesPanelEntered(false);
+    setShowLockedModels(false);
+    setSelectedRouteId(null);
+    setRouteHighlightPhase("idle");
+    setQueuedRouteId(null);
+    setSelectedHoldIndex(null);
     if (showModelSelect) {
       setModelSelectEntered(false);
-      setTimeout(() => setShowModelSelect(false), 550);
+      setTimeout(() => setShowModelSelect(false), MODEL_SELECT_LEAVE_MS);
     }
   }
 
@@ -264,7 +515,7 @@ export function WallImageWorkspace() {
         title="ROUTNet"
         right={
           <StepIndicator
-            current="augment"
+            current={recognitionDone ? "recognition" : "augment"}
             uploaded={!!imageId}
             augmentDone={augmentDone}
             handingOff={augmentDone}
@@ -272,29 +523,49 @@ export function WallImageWorkspace() {
         }
       />
 
-      <div className={`${styles.toolbarSlot} ${augmentDone ? styles.leaving : ""}`}>
-        <div className={styles.toolbar}>
-          <div className={`${styles.toolbarItem} ${toolbarEntered ? styles.toolbarItemIn : ""}`}>
-            <ImageSourceButtons
-              webcamActive={webcamActive}
-              disabled={loading}
-              onFileSelected={loadImage}
-              onToggleWebcam={() => {
-                setError(null);
-                setWebcamActive((prev) => !prev);
-              }}
-              onOpenGallery={() => {
-                setError(null);
-                setGalleryOpen(true);
-              }}
-            />
-          </div>
-          <div
-            className={`${styles.lighting} ${styles.toolbarItem} ${styles.toolbarItemLighting} ${toolbarEntered ? styles.toolbarItemIn : ""}`}
-          >
-            <LabeledSlider label="Lighting" value={lighting} onChange={setLighting} />
+      {/* Both children share this one reserved spot below the header --
+          same "stack in one grid cell" technique used for segmentSlot
+          below. The toolbar fades out here once augmentDone (unchanged);
+          the locked-model chips fade/slide into this same spot once
+          Recognition succeeds (see showLockedModels above). */}
+      <div className={styles.toolbarArea}>
+        <div className={`${styles.toolbarSlot} ${augmentDone ? styles.leaving : ""}`}>
+          <div className={styles.toolbar}>
+            <div className={`${styles.toolbarItem} ${toolbarEntered ? styles.toolbarItemIn : ""}`}>
+              <ImageSourceButtons
+                webcamActive={webcamActive}
+                disabled={loading}
+                onFileSelected={loadImage}
+                onToggleWebcam={() => {
+                  setError(null);
+                  setWebcamActive((prev) => !prev);
+                }}
+                onOpenGallery={() => {
+                  setError(null);
+                  setGalleryOpen(true);
+                }}
+              />
+            </div>
+            <div
+              className={`${styles.lighting} ${styles.toolbarItem} ${styles.toolbarItemLighting} ${toolbarEntered ? styles.toolbarItemIn : ""}`}
+            >
+              <LabeledSlider label="Lighting" value={lighting} onChange={setLighting} />
+            </div>
           </div>
         </div>
+
+        {showLockedModels && (
+          <div ref={lockedModelsRef} className={styles.lockedModelsSlot}>
+            <span className={styles.lockedModelChip}>
+              <span className={styles.lockedModelChipLabel}>Hold model</span>
+              <span className={styles.lockedModelChipValue}>{holdModel}</span>
+            </span>
+            <span className={styles.lockedModelChip}>
+              <span className={styles.lockedModelChipLabel}>Route model</span>
+              <span className={styles.lockedModelChipValue}>{routeModel}</span>
+            </span>
+          </div>
+        )}
       </div>
 
       {error && (
@@ -320,6 +591,42 @@ export function WallImageWorkspace() {
               setWebcamActive(false);
             }}
             onAddSegmentPoint={handleAddSegmentPoint}
+            interactive={!recognitionDone}
+            showHoldOutline={!recognitionDone}
+            overlay={
+              recognitionDone &&
+              visibleHolds.length > 0 && (
+                <svg
+                  className={styles.highlightOverlay}
+                  viewBox="0 0 1 1"
+                  preserveAspectRatio="none"
+                  aria-hidden
+                  style={
+                    selectedRouteId != null
+                      ? ({ "--route-highlight": colorForRoute(selectedRouteId) } as CSSProperties)
+                      : undefined
+                  }
+                >
+                  {visibleHolds.map((hold, index) => {
+                    const leaving = routeHighlightPhase === "exiting";
+                    const focused = !leaving && index === selectedHoldIndex;
+                    return (
+                      <polygon
+                        key={`${selectedRouteId}-${index}`}
+                        className={[
+                          leaving ? styles.highlightHoldLeave : styles.highlightHoldEnter,
+                          focused ? styles.highlightHoldFocused : "",
+                        ]
+                          .filter(Boolean)
+                          .join(" ")}
+                        points={hold.polygon.points.map((p) => `${p.x},${p.y}`).join(" ")}
+                        style={leaving ? undefined : { animationDelay: `${index * ROUTE_HOLD_REVEAL_STAGGER_MS}ms` }}
+                      />
+                    );
+                  })}
+                </svg>
+              )
+            }
           />
           <Button
             type="button"
@@ -353,7 +660,7 @@ export function WallImageWorkspace() {
             <div
               className={`${styles.modelSelectPanel} ${modelSelectEntered ? styles.modelSelectPanelIn : ""}`}
             >
-              <div className={styles.modelSelectRow}>
+              <div className={styles.modelSelectRow} ref={modelSelectRowRef}>
                 <ModelSelect
                   label="hold model"
                   options={HOLD_MODEL_OPTIONS}
@@ -375,12 +682,96 @@ export function WallImageWorkspace() {
                   <Button
                     type="button"
                     variant="primary"
-                    onClick={() => router.push("/recognition")}
+                    disabled={inferring}
+                    onClick={handleGoToRecognition}
                   >
-                    Recognition
+                    {inferring ? "Running…" : "Recognition"}
                   </Button>
                 </div>
               )}
+            </div>
+          )}
+
+          {recognitionDone && recognitionResult && (
+            <div
+              className={`${styles.routesPanel} ${routesPanelEntered ? styles.routesPanelIn : ""}`}
+            >
+              <p className={styles.routesSummary}>
+                {routes.length} route{routes.length === 1 ? "" : "s"} detected
+                {typeof recognitionResult.inferenceMetrics.hold_count === "number"
+                  ? ` across ${recognitionResult.inferenceMetrics.hold_count} holds`
+                  : ""}
+                .
+              </p>
+
+              <ul className={styles.routeList}>
+                {routes.map((route, index) => {
+                  const isSelected = routeHighlightPhase !== "idle" && selectedRouteId === route.routeId;
+                  const holdsForRoute = holdsByRoute.get(route.routeId) ?? [];
+                  return (
+                    <li key={route.routeId}>
+                      {/* A plain div, not a button -- it now wraps the
+                          hold-button row too (nested buttons aren't valid
+                          HTML), so the card's own border/glow visually
+                          contains both, per how this was asked for
+                          ("under the route card, not outside it"). */}
+                      <div
+                        className={`${styles.routeCard} ${isSelected ? styles.routeCardSelected : ""}`}
+                        style={
+                          {
+                            // The card's own glow border uses this route's own
+                            // color rather than one shared neon for every route --
+                            // see the --route-highlight comment in the CSS.
+                            "--route-highlight": ROUTE_COLORS[index % ROUTE_COLORS.length],
+                          } as CSSProperties
+                        }
+                      >
+                        <button
+                          type="button"
+                          className={styles.routeCardHeader}
+                          aria-pressed={isSelected}
+                          onClick={() => selectRoute(route.routeId)}
+                        >
+                          <span
+                            className={styles.routeSwatch}
+                            style={{ background: ROUTE_COLORS[index % ROUTE_COLORS.length] }}
+                            aria-hidden
+                          />
+                          <span className={styles.routeLabel}>Route {route.routeId}</span>
+                          <span className={styles.routeHoldCount}>
+                            {route.holds.length} hold{route.holds.length === 1 ? "" : "s"}
+                          </span>
+                        </button>
+
+                        {/* Always mounted (not `isSelected &&`), just
+                            collapsed via CSS -- switching which route is
+                            selected used to unmount one card's row and
+                            mount another's in the same instant, reflowing
+                            every card in between at once (visible as a
+                            page-wide "blink"). Height-animating a row
+                            that's always there avoids that. */}
+                        <div
+                          className={`${styles.holdButtonRow} ${isSelected ? styles.holdButtonRowExpanded : ""}`}
+                          aria-hidden={!isSelected}
+                        >
+                          {holdsForRoute.map((_, holdIndex) => (
+                            <button
+                              key={holdIndex}
+                              type="button"
+                              tabIndex={isSelected ? 0 : -1}
+                              className={`${styles.holdButton} ${selectedHoldIndex === holdIndex ? styles.holdButtonSelected : ""}`}
+                              aria-pressed={selectedHoldIndex === holdIndex}
+                              onClick={() => selectHold(holdIndex)}
+                            >
+                              Hold {holdIndex + 1}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
             </div>
           )}
         </div>
