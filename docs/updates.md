@@ -16,9 +16,9 @@ An empty or omitted exemplar list selects text-only inference. Each supplied exe
 
 Retained evaluation inputs and completed A40 findings are documented in [evaluation.md](evaluation.md).
 
-## Route classifiers
+## Route discriminators
 
-Color-only and pretrained TripletNet route classifiers are available through `RouteClassifierFactory` as `color_only_classifier` and `triplet_route_classifier`.
+Color-only and pretrained TripletNet route discriminators are available through `RouteDiscriminatorFactory` as `color_only_discriminator` and `triplet_route_discriminator`.
 
 ## Preprocessing and augmentation
 

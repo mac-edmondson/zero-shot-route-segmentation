@@ -1,6 +1,6 @@
 # EvaluationSuite Interface
 
-**Depends on:** [RouteDetectionPipeline](route-detection-pipeline.md), [HoldDetector](hold-detector.md), [RouteClassifier](route-classifier.md), [DataPreprocessingPipeline](data-preprocessing-pipeline.md)
+**Depends on:** [RouteDetectionPipeline](route-detection-pipeline.md), [HoldDetector](hold-detector.md), [RouteDiscriminator](route-discriminator.md), [DataPreprocessingPipeline](data-preprocessing-pipeline.md)
 **Consumed by:** offline experiment tooling and [Dashboard Backend](dashboard-backend.md)
 
 ## 1. Responsibility
@@ -9,7 +9,7 @@ Run reproducible evaluations and gather results for:
 
 - full route-detection pipelines;
 - hold detectors in isolation;
-- route classifiers in isolation;
+- route discriminators in isolation;
 - clean vs distorted inputs;
 - classifier/configuration variants such as color-only, color+spatial, DINO-only, and color+spatial+DINO.
 

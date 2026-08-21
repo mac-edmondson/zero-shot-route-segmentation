@@ -2,9 +2,9 @@ import cv2, numpy as np
 from collections.abc import Sequence
 from PIL import Image,ImageDraw
 from ..interfaces.data_models import Hold,Image as Img,Route
-from ..interfaces.route_classifier import BatchAlignmentError
-class ColorOnlyRouteClassifier:
- implementation_id="color_only_classifier"
+from ..interfaces.route_discriminator import BatchAlignmentError
+class ColorOnlyRouteDiscriminator:
+ implementation_id="color_only_discriminator"
  def __init__(self,n_clusters:int,clustering_method="kmeans",random_state:int|None=0,**config):
   if not isinstance(n_clusters,int) or n_clusters<=0: raise ValueError("n_clusters must be positive.")
   if clustering_method!="kmeans": raise ValueError("Only kmeans is supported.")

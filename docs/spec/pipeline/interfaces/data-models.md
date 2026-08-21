@@ -1,6 +1,6 @@
 # Shared Data Models
 
-**Used by:** [HoldDetector](hold-detector.md), [RouteClassifier](route-classifier.md), [RouteDetectionPipeline](route-detection-pipeline.md), [AugmentationSuite](augmentation-suite.md), [DataPreprocessingPipeline](data-preprocessing-pipeline.md), [EvaluationSuite](evaluation-suite.md), and the [Dashboard Backend](dashboard-backend.md).
+**Used by:** [HoldDetector](hold-detector.md), [RouteDiscriminator](route-discriminator.md), [RouteDetectionPipeline](route-detection-pipeline.md), [AugmentationSuite](augmentation-suite.md), [DataPreprocessingPipeline](data-preprocessing-pipeline.md), [EvaluationSuite](evaluation-suite.md), and the [Dashboard Backend](dashboard-backend.md).
 
 ## 1. Purpose
 

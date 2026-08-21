@@ -47,7 +47,7 @@ class HoldDetector(Protocol):
 - preserve input image order;
 - return an empty list when no holds are detected in a valid image;
 - produce [Hold](data-models.md#2-canonical-python-facing-contracts) objects whose polygons use the image's coordinate system;
-- avoid assigning route membership. Route membership belongs to [RouteClassifier](route-classifier.md).
+- avoid assigning route membership. Route membership belongs to [RouteDiscriminator](route-discriminator.md).
 
 An implementation SHOULD attach confidence or method-specific values through `Hold.attributes` rather than changing the public protocol.
 

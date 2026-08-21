@@ -1,4 +1,4 @@
-"""Pretrained TripletNet route classifier."""
+"""Pretrained TripletNet route discriminator."""
 from __future__ import annotations
 from collections.abc import Sequence
 from pathlib import Path
@@ -8,10 +8,10 @@ import numpy as np
 import torch
 from PIL import Image, ImageDraw
 from ..interfaces.data_models import Hold, Route
-from ..interfaces.route_classifier import BatchAlignmentError
+from ..interfaces.route_discriminator import BatchAlignmentError
 
-class TripletRouteClassifier:
-    implementation_id="triplet_route_classifier"
+class TripletRouteDiscriminator:
+    implementation_id="triplet_route_discriminator"
     _WEIGHTS=Path(__file__).resolve().parents[3]/"models"/"mask_rcnn_hold_detector"/"triplet_network_final.pt"
     def __init__(self,weights_path: str|Path|None=None,device: str|torch.device|None=None,median_threshold:float=.7,max_threshold:float=2.65,**config:object):
         self.weights_path=Path(weights_path or self._WEIGHTS); self.device=torch.device("cuda" if device is None and torch.cuda.is_available() else device or "cpu")

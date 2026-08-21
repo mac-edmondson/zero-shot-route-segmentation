@@ -1,31 +1,31 @@
-# RouteClassifierFactory Interface
+# RouteDiscriminatorFactory Interface
 
 TODO: Port to code and clean
 
-**Produces:** [RouteClassifier](route-classifier.md)
+**Produces:** [RouteDiscriminator](route-discriminator.md)
 **Used by:** [RouteDetectionPipeline](route-detection-pipeline.md), configuration code, [EvaluationSuite](evaluation-suite.md)
 
 ## 1. Responsibility
 
-Instantiate a route classifier by stable method/configuration identifier while keeping model-specific dependencies out of the pipeline and dashboard layers.
+Instantiate a route discriminator by stable method/configuration identifier while keeping model-specific dependencies out of the pipeline and dashboard layers.
 
 ## 2. Protocol
 
 ```python
 from typing import Any, Mapping
-from .route_classifier import RouteClassifier
+from .route_discriminator import RouteDiscriminator
 
-class RouteClassifierFactory:
+class RouteDiscriminatorFactory:
     def create(
         self,
-        classifier_method: str,
+        discriminator_method: str,
         config: Mapping[str, Any] | None = None,
-    ) -> RouteClassifier: ...
+    ) -> RouteDiscriminator: ...
 
     def available_methods(self) -> tuple[str, ...]: ...
 ```
 
-The board explicitly showed a `RouteClassifierFactory` with `create(...) -> RouteClassifier`; parameter names were not fully legible, so `classifier_method` and `config` are proposed normalization.
+The board explicitly showed a `RouteDiscriminatorFactory` with `create(...) -> RouteDiscriminator`; parameter names were not fully legible, so `discriminator_method` and `config` are proposed normalization.
 
 ## 3. Configuration
 
@@ -47,8 +47,8 @@ Exact implementation IDs are project decisions.
 ## 4. Errors
 
 ```python
-class UnknownRouteClassifierError(ValueError): ...
-class InvalidRouteClassifierConfigError(ValueError): ...
+class UnknownRouteDiscriminatorError(ValueError): ...
+class InvalidRouteDiscriminatorConfigError(ValueError): ...
 ```
 
 Unknown methods MUST fail before an evaluation run begins.

@@ -1,9 +1,9 @@
-# RouteClassifier Interface
+# RouteDiscriminator Interface
 
 TODO: Port to code and clean
 
 **Depends on:** [Shared Data Models](data-models.md), detections from [HoldDetector](hold-detector.md)
-**Created by:** [RouteClassifierFactory](route-classifier-factory.md)
+**Created by:** [RouteDiscriminatorFactory](route-discriminator-factory.md)
 **Consumed by:** [RouteDetectionPipeline](route-detection-pipeline.md), [EvaluationSuite](evaluation-suite.md)
 
 ## 1. Responsibility
@@ -16,7 +16,7 @@ Given images and already-detected holds, group those holds into climbing routes.
 from typing import Protocol, Sequence
 from .data_models import Hold, Image, Route
 
-class RouteClassifier(Protocol):
+class RouteDiscriminator(Protocol):
     @property
     def implementation_id(self) -> str: ...
 
@@ -62,7 +62,7 @@ The board calls out evaluation variants such as:
 - DINO-only;
 - color + spatial + DINO.
 
-These SHOULD be represented as classifier configurations behind the same `RouteClassifier` protocol, not as separate downstream APIs. This lets [EvaluationSuite](evaluation-suite.md) compare variants uniformly.
+These SHOULD be represented as classifier configurations behind the same `RouteDiscriminator` protocol, not as separate downstream APIs. This lets [EvaluationSuite](evaluation-suite.md) compare variants uniformly.
 
 ## 5. Visualization
 
