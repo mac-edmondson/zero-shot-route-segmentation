@@ -11,4 +11,5 @@ pillow>=10.0
 opencv-python-headless>=5.0.0.93
 
 --extra-index-url https://download.pytorch.org/whl/cpu
-torch>=2.0.0
+torch==2.13.0
+torchvision==0.28.0

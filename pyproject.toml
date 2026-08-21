@@ -17,6 +17,7 @@ dependencies = [
     "torch",
     "torchvision",
     "transformers",
+    "detectron2",
 ]
 
 [build-system]
@@ -27,3 +28,9 @@ build-backend = "setuptools.build_meta"
 dev = [
     "pytest>=9.1.1",
 ]
+
+[tool.uv.extra-build-dependencies]
+detectron2 = ["torch"]
+
+[tool.uv.sources]
+detectron2 = { git = "https://github.com/facebookresearch/detectron2.git" }

@@ -18,11 +18,11 @@ from starlette.datastructures import UploadFile as StarletteUploadFile
 
 # This fallback keeps the imports testable when pytest loads `backend` top-level.
 try:
-    from ...pipeline.hold_detector.hold_detector_factory import (
+    from ..pipeline.hold_detector.hold_detector_factory import (
         AVAILABLE_HOLD_DETECTORS,
         UnknownHoldDetectorError,
     )
-    from ...pipeline.route_discriminator.route_discriminator_factory import (
+    from ..pipeline.route_discriminator.route_discriminator_factory import (
         AVAILABLE_ROUTE_DISCRIMINATORS,
         UnknownRouteDiscriminatorError,
     )

@@ -18,28 +18,21 @@ from ..interfaces.errors import BatchAlignmentError, InvalidImageError
 
 class MaskRCNNHoldDetector:
     implementation_id = "mask_rcnn_hold_detector"
-    _ARTIFACT_DIR = (
-        Path(__file__).resolve().parents[3] / "models" / "mask_rcnn_hold_detector"
-    )
-    _DETECTRON2_SOURCE = Path("/home/vault/v123be/v123be56/LIT/models/detectron2")
     _CLASS_NAMES = {0: "hold", 1: "volume"}
 
     def __init__(
         self,
-        config_path: str | Path | None = None,
-        weights_path: str | Path | None = None,
+        config_path: str | Path = "models/mask_rcnn_hold_detector/experiment_config.yml",
+        weights_path: str | Path = "models/mask_rcnn_hold_detector/model_final.pth",
         device: str | torch.device | None = None,
         score_threshold: float | None = None,
         include_volumes: bool = False,
-        detectron2_source: str | Path | None = _DETECTRON2_SOURCE,
+        detectron2_source: str | Path | None = None,
         **config: object,
     ) -> None:
         if score_threshold is not None and not 0 <= score_threshold <= 1:
             raise ValueError("score_threshold must be in [0, 1].")
-        self.config_path, self.weights_path = (
-            Path(config_path or self._ARTIFACT_DIR / "experiment_config.yml"),
-            Path(weights_path or self._ARTIFACT_DIR / "model_final.pth"),
-        )
+        self.config_path, self.weights_path = Path(config_path), Path(weights_path)
         self.device = torch.device(
             "cuda" if device is None and torch.cuda.is_available() else device or "cpu"
         )
@@ -48,7 +41,9 @@ class MaskRCNNHoldDetector:
         if self.device.type == "cuda" and not torch.cuda.is_available():
             raise RuntimeError("CUDA was requested, but it is not available.")
         self.score_threshold, self.include_volumes = score_threshold, include_volumes
-        self.detectron2_source = Path(detectron2_source) if Path(detectron2_source).exists() else None
+        self.detectron2_source = (
+            Path(detectron2_source) if detectron2_source is not None else None
+        )
         self.extra_config, self.model, self.augmentation = dict(config), None, None
 
     @property
