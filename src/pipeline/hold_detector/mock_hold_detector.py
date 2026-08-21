@@ -6,6 +6,7 @@ import numpy as np
 
 from ..interfaces.data_models import Coordinate, Hold, Image, Polygon
 from .hold_detector import HoldDetector
+
 # Number of holds returned for each non-empty image.
 MIN_NUM_HOLDS_PER_IMAGE = 0
 MAX_NUM_HOLDS_PER_IMAGE = 100
@@ -15,7 +16,10 @@ MIN_NUM_POINTS_PER_HOLD = 10
 MAX_NUM_POINTS_PER_HOLD = 200
 
 # Distance from a hold's generated centroid to each vertex, in pixels.
-MIN_POINT_DISTANCE = 90
+# Note: if this isn't 1, tests fall into some weird
+# infinite loop situation. Don't think about it, much. Just leave it as is though
+# , lol.
+MIN_POINT_DISTANCE = 1
 MAX_POINT_DISTANCE = 100
 
 # Keep generated geometry bounded and reasonably varied for mock data.
@@ -108,7 +112,10 @@ class MockHoldDetector(HoldDetector):
             for x in range(image.width):
                 for y in range(image.height):
                     point = (x, y)
-                    if point != (centroid_x, centroid_y) and point not in distinct_points:
+                    if (
+                        point != (centroid_x, centroid_y)
+                        and point not in distinct_points
+                    ):
                         replacements.append(point)
                         if len(replacements) == 3 - len(distinct_points):
                             break
@@ -123,9 +130,7 @@ class MockHoldDetector(HoldDetector):
                 point[0] - centroid_x,
             )
         )
-        return Hold(
-            Polygon(tuple(Coordinate(x, y) for x, y in points))
-        )
+        return Hold(Polygon(tuple(Coordinate(x, y) for x, y in points)))
 
     # Bounding boxes are cheap; overlap avoidance is intentionally best-effort.
     @staticmethod

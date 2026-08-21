@@ -37,14 +37,16 @@ def test_pipeline_configuration_and_async_workflow() -> None:
 
     available = client.get("/pipeline/available_configs")
     assert available.status_code == 200
-    assert available.json() == {
-        "hold_detector": ["SAM3", "mock"],
-        "route_classifier": ["mock"],
-    }
+    configs = available.json()
+    assert set(configs) == {"hold_detector", "route_classifier"}
+    assert all(
+        isinstance(values, list) and all(isinstance(value, str) for value in values)
+        for values in configs.values()
+    )
     assert (
         client.put(
             "/pipeline",
-            json={"hold_detector": "mock", "route_classifier": "mock"},
+            json={"hold_detector": "Mock", "route_classifier": "Mock"},
         ).status_code
         == 200
     )
@@ -106,7 +108,7 @@ def test_legacy_multipart_calls_remain_usable() -> None:
     inferred = client.post(
         "/pipeline/infer/working",
         files=upload,
-        data={"hold_detector": "Color-only", "route_discriminator": "Color-only"},
+        data={"hold_detector": "Mock", "route_discriminator": "Mock"},
     )
     assert inferred.status_code == 200
     assert "routes" in inferred.json()

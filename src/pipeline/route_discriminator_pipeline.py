@@ -1,8 +1,9 @@
-from .hold_detector import HoldDetector
-from .route_discriminator import RouteDiscriminator
-from dataclasses import dataclass
 from collections.abc import Sequence
-from .interfaces.data_models import Route, Image
+from dataclasses import dataclass
+
+from .hold_detector import HoldDetector
+from .interfaces.data_models import Image, Route
+from .route_discriminator import RouteDiscriminator
 
 
 @dataclass(frozen=True)
