@@ -48,7 +48,7 @@ class MaskRCNNHoldDetector:
         if self.device.type == "cuda" and not torch.cuda.is_available():
             raise RuntimeError("CUDA was requested, but it is not available.")
         self.score_threshold, self.include_volumes = score_threshold, include_volumes
-        self.detectron2_source = Path(detectron2_source) if detectron2_source else None
+        self.detectron2_source = Path(detectron2_source) if Path(detectron2_source).exists() else None
         self.extra_config, self.model, self.augmentation = dict(config), None, None
 
     @property
@@ -194,25 +194,3 @@ class MaskRCNNHoldDetector:
                 "implementation_id": cls.implementation_id,
             },
         )
-
-    @staticmethod
-    def mark_holds(
-        images: Sequence[Image.Image], holds: Sequence[Sequence[Hold]]
-    ) -> list[Image.Image]:
-        if len(images) != len(holds):
-            raise BatchAlignmentError("images and holds must align.")
-        result = []
-        for image, detected in zip(images, holds, strict=True):
-            overlay = image.convert("RGB").copy()
-            draw = ImageDraw.Draw(overlay)
-            for hold in detected:
-                draw.line(
-                    [
-                        (p.x, p.y)
-                        for p in (*hold.polygon.points, hold.polygon.points[0])
-                    ],
-                    fill=(255, 80, 0),
-                    width=3,
-                )
-            result.append(overlay)
-        return result

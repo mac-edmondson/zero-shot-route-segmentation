@@ -41,28 +41,37 @@ def test_pipeline_configuration_and_async_workflow() -> None:
         "hold_detector": ["SAM3", "mock"],
         "route_classifier": ["mock"],
     }
-    assert client.put(
-        "/pipeline",
-        json={"hold_detector": "mock", "route_classifier": "mock"},
-    ).status_code == 200
+    assert (
+        client.put(
+            "/pipeline",
+            json={"hold_detector": "mock", "route_classifier": "mock"},
+        ).status_code
+        == 200
+    )
     assert client.put("/image/working", files=upload).status_code == 200
 
-    assert client.post(
-        "/image/working/segment",
-        json={"coordinates": [{"x": 0.5, "y": 0.5}]},
-    ).status_code == 202
+    assert (
+        client.post(
+            "/image/working/segment",
+            json={"coordinates": [{"x": 0.5, "y": 0.5}]},
+        ).status_code
+        == 202
+    )
     segments = client.get("/image/working/segment").json()
     assert segments["status"] == "completed"
     assert len(segments["segments"]) == 1
 
     segment_id = segments["segments"][0]["segment_id"]
-    assert client.post(
-        "/image/working/augment",
-        json={
-            "lightingPercent": 10,
-            "segments": [{"segmentId": segment_id, "chalkPercent": 25}],
-        },
-    ).status_code == 202
+    assert (
+        client.post(
+            "/image/working/augment",
+            json={
+                "lightingPercent": 10,
+                "segments": [{"segmentId": segment_id, "chalkPercent": 25}],
+            },
+        ).status_code
+        == 202
+    )
     assert client.get("/image/working").json()["status"] == "completed"
 
     assert client.post("/pipeline/infer/working").status_code == 202
@@ -84,13 +93,16 @@ def test_legacy_multipart_calls_remain_usable() -> None:
     assert detected.status_code == 200
     segment_id = detected.json()["segments"][0]["segment_id"]
 
-    assert client.post(
-        "/image/working/augment",
-        json={
-            "lightingPercent": 10,
-            "segments": [{"segmentId": segment_id, "chalkPercent": 20}],
-        },
-    ).status_code == 202
+    assert (
+        client.post(
+            "/image/working/augment",
+            json={
+                "lightingPercent": 10,
+                "segments": [{"segmentId": segment_id, "chalkPercent": 20}],
+            },
+        ).status_code
+        == 202
+    )
     inferred = client.post(
         "/pipeline/infer/working",
         files=upload,

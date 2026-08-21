@@ -5,11 +5,10 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Protocol
 
-from ..interfaces.data_models import Hold, Image
+from PIL import Image, ImageDraw
 
-
-class InvalidHoldDetectorConfigError(ValueError):
-    """Raised when there is an invalid configuration within a hold detector"""
+from ..interfaces.data_models import Hold
+from ..interfaces.errors import BatchAlignmentError
 
 
 class HoldDetector(Protocol):
@@ -30,12 +29,18 @@ class HoldDetector(Protocol):
         result = []
         for image, detected in zip(images, holds, strict=True):
             overlay = image.convert("RGB").copy()
-            draw = ImageDraw.Draw(overlay)
+            fill_overlay = Image.new("RGBA", overlay.size, (0, 0, 0, 0))
+            fill_draw = ImageDraw.Draw(fill_overlay)
             for hold in detected:
                 points = [
                     (point.x, point.y)
                     for point in (*hold.polygon.points, hold.polygon.points[0])
                 ]
-                draw.line(points, fill=(255, 80, 0), width=3)
+                fill_draw.polygon(points, fill=(255, 80, 0, 102))
+            overlay = Image.alpha_composite(overlay.convert("RGBA"), fill_overlay).convert("RGB")
+            draw = ImageDraw.Draw(overlay)
+            for hold in detected:
+                points = [(point.x, point.y) for point in (*hold.polygon.points, hold.polygon.points[0])]
+                draw.line(points, fill=(255, 80, 0), width=5)
             result.append(overlay)
         return result

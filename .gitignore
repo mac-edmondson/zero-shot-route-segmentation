@@ -26,11 +26,12 @@ Project stuff/edmondson-dsouza-hedge-cv-proposal.pdf
 logs/
 src/SAM_hold/results/
 
-# Local pretrained detector artifacts
-models/mask_rcnn_hold_detector/
-
 # Disposable local validation data and artifacts
 tmp/
 
 # Other
 Project\ stuff/
+
+#output files
+data/test-rcnn-pipeline
+data/indoor-climbing-gym-hold-segmentation

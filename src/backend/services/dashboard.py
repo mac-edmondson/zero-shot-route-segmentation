@@ -8,6 +8,7 @@ from collections.abc import Iterable, Sequence
 
 from PIL import Image as PILImage
 
+# This fallback keeps the imports testable when pytest loads `backend` top-level.
 try:
     from ...pipeline.hold_detector.hold_detector_factory import hold_detector_factory
     from ...pipeline.interfaces.augmentation import (
