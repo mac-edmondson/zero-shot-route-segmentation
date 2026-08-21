@@ -41,8 +41,20 @@ export interface RouteDetectionApiClient {
     request: AugmentWorkingImageRequest,
   ): Promise<AugmentWorkingImageResult>;
 
+  /**
+   * Recognition: runs the full hold-detection + route-discrimination
+   * pipeline and returns the detected routes. Carries the working image,
+   * the augmentation state gathered by `Finish Augment`, and the model
+   * selection made just before `Recognition` is pressed -- all in one call,
+   * since the backend is stateless and never stores the working image
+   * between requests (see detectWorkingSegments above), so there's nowhere
+   * else to combine what those two steps gathered. The pipeline needs the
+   * image and both selections together to run at all.
+   */
   inferWorkingPipeline(
-    config?: Partial<PipelineConfig>,
+    image: File | Blob,
+    augmentation: AugmentWorkingImageRequest,
+    config: PipelineConfig,
   ): Promise<InferenceResult>;
 
   getPipeline(signal?: AbortSignal): Promise<PipelineConfig>;

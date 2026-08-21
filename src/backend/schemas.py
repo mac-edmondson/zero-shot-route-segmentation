@@ -12,7 +12,8 @@ never need to know about that conversion.
 
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
+from pydantic.alias_generators import to_camel
 
 
 class Coordinate(BaseModel):
@@ -33,3 +34,54 @@ class SegmentResult(BaseModel):
 
 class DetectSegmentsResponse(BaseModel):
     segments: list[SegmentResult]
+
+
+class SegmentAugmentation(BaseModel):
+    """One segment's chalk augmentation, as sent by `POST /image/working/augment`
+    (src/frontend/lib/api/types.ts: SegmentAugmentation). JSON body, not a
+    form -- unlike /image/working/segments, so camelCase from the frontend is
+    accepted directly via the alias generator rather than needing a
+    JSON-encoded form field."""
+
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    segment_id: str
+    chalk_percent: float
+
+
+class AugmentWorkingImageRequest(BaseModel):
+    """Body of `POST /image/working/augment`
+    (src/frontend/lib/api/types.ts: AugmentWorkingImageRequest). No image
+    bytes -- the backend is stateless and this call doesn't carry the working
+    image, so there's nothing here to bake chalk/lighting into yet."""
+
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    lighting_percent: float
+    segments: list[SegmentAugmentation]
+
+
+class HoldResult(BaseModel):
+    """One hold within a detected route, returned by
+    `POST /pipeline/infer/working` -- shape matches SegmentResult's polygon
+    convention (normalized [0, 1] coordinates), plus the centroid the shared
+    pipeline data model (`src/pipeline/interfaces/data_models.py::Hold`)
+    already computes."""
+
+    centroid: Coordinate
+    polygon: Polygon
+
+
+class RouteResult(BaseModel):
+    route_id: int
+    holds: list[HoldResult]
+
+
+class InferWorkingResponse(BaseModel):
+    """Response of `POST /pipeline/infer/working`
+    (src/frontend/lib/api/types.ts: InferenceResult) -- one route list for
+    the working image, each route a list of holds ("list of routes (which is
+    lists of holds)" per docs/diagrams/spec_rest_api.drawio.svg)."""
+
+    routes: list[RouteResult]
+    inference_metrics: dict[str, float] = {}

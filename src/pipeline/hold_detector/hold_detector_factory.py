@@ -28,8 +28,15 @@ def _create_sam_hold_detector(config: Mapping[str, Any] = dict()) -> HoldDetecto
     return SAMHoldDetector(**config)
 
 
+def _create_mock_hold_detector(config: Mapping[str, Any] = dict()) -> HoldDetector:
+    from .mock_hold_detector import MockHoldDetector
+
+    return MockHoldDetector(**config)
+
+
 _AVAILABLE_HOLD_DETECTORS_MAP: Mapping[str, _Constructor] = {
-    "SAM3": _create_sam_hold_detector  # TODO: Consider adding parameters we want? @joswin03
+    "SAM3": _create_sam_hold_detector,  # TODO: Consider adding parameters we want? @joswin03
+    "mock": _create_mock_hold_detector,
 }
 AVAILABLE_HOLD_DETECTORS = list(_AVAILABLE_HOLD_DETECTORS_MAP.keys())
 

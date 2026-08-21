@@ -19,3 +19,12 @@ def test_mock_pipeline_returns_routes():
     assert len(routes) == len(images)
     assert any(routes)
     assert all(route.holds for image_routes in routes for route in image_routes)
+
+
+def test_mock_holds_use_random_polygon_point_counts():
+    holds = MockHoldDetector(seed=12345).get_holds([Image.new("RGB", (400, 400))])[0]
+    point_counts = [len(hold.polygon.points) for hold in holds]
+
+    assert point_counts
+    assert all(10 <= count <= 200 for count in point_counts)
+    assert len(set(point_counts)) > 1

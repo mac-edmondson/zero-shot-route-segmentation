@@ -1,4 +1,16 @@
 .workspace {
+  /* Default/fallback only -- each route card and the image's highlight
+     overlay both override this inline with that route's own ROUTE_COLORS
+     swatch color (WallImageWorkspace.tsx), so a card's glow border and its
+     holds on the image read as the same selection, in that route's own
+     color rather than one shared neon for every route. Glow shadows derive
+     from whatever this is set to via color-mix() below, so overriding just
+     this one property is enough. The individually-drilled-into hold (see
+     .highlightHoldFocused) still reuses the global --gold token instead,
+     so it reads as a *further* pick within the route's own color rather
+     than a competing color. */
+  --route-highlight: #2fd7ff;
+
   display: flex;
   flex-direction: column;
   gap: clamp(0.85rem, 2vh, 2rem);
@@ -13,6 +25,21 @@
   overflow: hidden;
 }
 
+/* Reserves the toolbar's spot below the header -- same "stack in one grid
+   cell" technique as segmentSlot below. Two things can occupy it:
+   .toolbarSlot (the real toolbar, fading out once augmentDone) and
+   .lockedModelsSlot (the locked model chips, sliding/fading in once
+   Recognition succeeds -- see showLockedModels in the component). */
+.toolbarArea {
+  flex-shrink: 0;
+  display: grid;
+}
+
+.toolbarArea > * {
+  grid-area: 1 / 1;
+  min-width: 0;
+}
+
 /* Fades and shrinks slightly in place -- same "kind" of exit as the
    segment panel's own closing animation (a settle toward a smaller,
    fading version of itself), just without the character/hold mechanics
@@ -21,7 +48,6 @@
    moves or resizes when this leaves, only this element's own visibility
    changes. */
 .toolbarSlot {
-  flex-shrink: 0;
   opacity: 1;
   filter: blur(0);
   transform: scale(1);
@@ -82,6 +108,72 @@
 .lighting {
   width: 240px;
   max-width: 100%;
+}
+
+/* Where the model-select row lands once Recognition locks it in -- same
+   glass-surface language as .toolbar itself, so the handoff reads as one
+   continuous piece of UI rather than a different one taking its place.
+   The actual slide is a `transform` set imperatively (see the
+   useLayoutEffect in the component); this only supplies where it sits
+   once settled and a plain fade-in as a fallback for anyone who never
+   sees the transform (e.g. prefers-reduced-motion, which skips it). */
+.lockedModelsSlot {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  background: var(--surface);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 0.85rem 1.25rem;
+  box-shadow: var(--shadow-sm);
+}
+
+.lockedModelChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.85rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+}
+
+.lockedModelChipLabel {
+  color: var(--muted-2);
+  font-size: 0.78rem;
+}
+
+.lockedModelChipValue {
+  color: var(--foreground);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+/* Sits right after the two chips -- accent-colored (not a neutral chip
+   itself) so it reads as the one actionable thing in an otherwise
+   read-only row. handleChangeModel plays the lock/slide in reverse. */
+.changeModelButton {
+  margin-left: 0.25rem;
+  padding: 0.4rem 0.85rem;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--accent-text);
+  background: var(--accent-soft);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) linear,
+    border-color var(--dur-fast) linear;
+}
+
+.changeModelButton:hover {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  border-color: var(--accent);
 }
 
 .error {
@@ -202,6 +294,290 @@
   transform: translateY(0) scale(1);
 }
 
+/* Takes over the segment sidebar's spot once modelSelectPanel has finished
+   leaving (see handleGoToRecognition's MODEL_SELECT_LEAVE_MS timeout) --
+   same rise+fade+blur entrance vocabulary as modelSelectPanel's own, for
+   the same "something new has arrived here" feel. */
+.routesPanel {
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding: 0 0.25rem;
+  overflow-y: auto;
+  opacity: 0;
+  filter: blur(6px);
+  transform: translateY(14px) scale(0.97);
+  transition:
+    opacity 550ms var(--ease),
+    filter 550ms var(--ease),
+    transform 550ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.routesPanelIn {
+  opacity: 1;
+  filter: blur(0);
+  transform: translateY(0) scale(1);
+}
+
+.routesSummary {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.routeList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+/* The whole card, including its (optional) hold-button row -- one
+   bordered/glowing box for both, rather than the header and the hold
+   buttons reading as two separate stacked elements. */
+.routeCard {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  transition:
+    border-color var(--dur) var(--ease),
+    box-shadow var(--dur) var(--ease);
+}
+
+.routeCard:hover {
+  border-color: var(--border-strong);
+}
+
+/* The clickable "Route N / N holds" row -- a <button> nested inside
+   .routeCard rather than .routeCard itself being the button, since the
+   hold-button row it sits above is also buttons (nested <button>s aren't
+   valid HTML). Reset to read as a plain row, not its own control. */
+.routeCardHeader {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.7rem 1rem;
+  background: none;
+  border: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* Neon highlight for whichever route's holds are currently on the image,
+   in that route's own color (--route-highlight, set inline per-card -- see
+   the component) -- a slow pulse so it reads as "shining", not just a
+   static outline. */
+.routeCardSelected,
+.routeCardSelected:hover {
+  border-color: var(--route-highlight);
+  animation: routeCardGlow 1.8s ease-in-out infinite;
+}
+
+@keyframes routeCardGlow {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 1px var(--route-highlight),
+      0 0 10px 1px color-mix(in srgb, var(--route-highlight) 45%, transparent);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1.5px var(--route-highlight),
+      0 0 22px 4px color-mix(in srgb, var(--route-highlight) 80%, transparent);
+  }
+}
+
+.routeSwatch {
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+}
+
+.routeLabel {
+  color: var(--foreground);
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.routeHoldCount {
+  color: var(--muted-2);
+  font-size: 0.85rem;
+  margin-left: auto;
+}
+
+/* Per-hold drill-down, nested inside the selected route's own card (not a
+   separate block below it) -- "Hold 1"/"Hold 2"/... in the same
+   bottom-first order the holds actually reveal in on the image (see
+   holdsByRoute in WallImageWorkspace.tsx). The top border reads as an
+   inset divider from the route header above, still within the same card
+   outline/glow.
+
+   Always rendered, height-animated between 0 and its expanded state,
+   rather than only mounted when its route is selected -- switching which
+   route is selected changes which card this is expanded on, and having
+   two cards mount/unmount it in the same instant (one card's row
+   disappearing exactly as another's appears) reflowed every card in the
+   list at once, which read as the whole page blinking. Animating it
+   instead spreads that layout change across a few frames like a slide,
+   not a jump. */
+.holdButtonRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 0.4rem;
+  max-height: 0;
+  opacity: 0;
+  padding: 0 1rem;
+  overflow: hidden;
+  border-top: 1px solid transparent;
+  transition:
+    max-height 260ms var(--ease),
+    opacity 200ms var(--ease),
+    padding 260ms var(--ease),
+    border-color 260ms var(--ease);
+}
+
+.holdButtonRowExpanded {
+  max-height: 12rem;
+  opacity: 1;
+  padding: 0.6rem 1rem 0.8rem;
+  border-top-color: var(--border);
+}
+
+.holdButton {
+  font: inherit;
+  font-size: 0.78rem;
+  color: var(--muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  padding: 0.3rem 0.7rem;
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) linear,
+    color var(--dur-fast) linear,
+    box-shadow var(--dur-fast) linear;
+}
+
+.holdButton:hover {
+  border-color: var(--border-strong);
+  color: var(--foreground);
+}
+
+/* Gold, not sky-blue -- this is a further pick *within* the selected
+   route, so it deliberately reuses the wordmark/step-indicator's existing
+   orange->gold accent language instead of a second shade of the route's
+   own highlight color. */
+.holdButtonSelected,
+.holdButtonSelected:hover {
+  color: var(--gold);
+  border-color: var(--gold);
+  box-shadow:
+    0 0 0 1px var(--gold),
+    0 0 10px 1px rgba(255, 207, 122, 0.55);
+}
+
+/* The selected route's holds, drawn on the image via ImageCanvas's
+   `overlay` slot -- same normalized [0, 1] coordinate box as its own
+   polygon/chalk overlay. */
+.highlightOverlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* Outline only, no fill and no filter -- mock holds are often much larger
+   than a real hold (see conversation notes on MockHoldDetector), so a
+   translucent fill washed a visible tint of the route's color across
+   large parts of the actual photo (fixed by dropping the fill).
+   `filter: drop-shadow` for a glow was fixed *too*, separately -- SVG
+   drop-shadow forces the browser to re-rasterize a blurred region every
+   frame for every polygon it's on, and with up to ~20 large holds per
+   route animating in/out (the leave animation has no stagger -- they all
+   animate at once), that was the actual remaining cause of the page
+   visibly stuttering/blinking on route switches, distinct from the
+   reflow issue fixed earlier. With no fill and no filter, each polygon
+   only ever animates opacity/transform, which the browser can composite
+   on the GPU without repainting anything underneath -- the route card's
+   own glow (a small, single, non-animating-shape box-shadow) is a much
+   cheaper place to keep that "neon" look. */
+.highlightOverlay polygon {
+  fill: none;
+  stroke: var(--route-highlight);
+  stroke-width: 3;
+  vector-effect: non-scaling-stroke;
+  /* Lets each polygon scale from its own center rather than the SVG's
+     (0,0) origin -- broadly supported on modern browsers. */
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+}
+
+/* One hold picked out via the "Hold N" buttons -- gold, matching
+   .holdButtonSelected, layered on top of the route's own color via higher
+   selector specificity rather than !important. Keeps its glow filter,
+   unlike the base rule above -- this is always exactly one static
+   (non-animating) polygon at a time, not a dozen animating at once, so it
+   doesn't carry the same repaint cost. */
+.highlightOverlay polygon.highlightHoldFocused {
+  fill: none;
+  stroke: var(--gold);
+  stroke-width: 3;
+  filter: drop-shadow(0 0 8px rgba(255, 207, 122, 0.9));
+}
+
+/* Bottom-first, one after another: each polygon is a fresh DOM node
+   whenever a route is (re)selected (keyed by routeId+index), so the
+   animation just plays on mount -- animation-delay (set inline per hold,
+   ROUTE_HOLD_REVEAL_STAGGER_MS apart) is the actual stagger. */
+@keyframes holdReveal {
+  from {
+    opacity: 0;
+    transform: scale(0.35);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.highlightHoldEnter {
+  opacity: 0;
+  animation: holdReveal 320ms var(--ease) both;
+}
+
+/* All currently-shown holds vanish together (no stagger) before the next
+   selection's holds start entering -- see ROUTE_HOLD_LEAVE_MS, which this
+   duration has to match. */
+@keyframes holdLeave {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+}
+
+.highlightHoldLeave {
+  animation: holdLeave 220ms var(--ease) both;
+}
+
 @media (max-width: 760px) {
   .mainGrid {
     grid-template-columns: 1fr;
@@ -241,8 +617,23 @@
   .toolbarSlot,
   .toolbarItem,
   .modelSelectPanel,
-  .recognitionButtonWrap {
+  .recognitionButtonWrap,
+  .routesPanel,
+  .holdButtonRow {
     transition-duration: 0s;
     transition-delay: 0s;
+  }
+
+  .routeCardSelected,
+  .routeCardSelected:hover {
+    animation: none;
+    box-shadow:
+      0 0 0 1.5px var(--route-highlight),
+      0 0 16px 2px color-mix(in srgb, var(--route-highlight) 45%, transparent);
+  }
+
+  .highlightHoldEnter,
+  .highlightHoldLeave {
+    animation-duration: 1ms;
   }
 }

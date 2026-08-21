@@ -82,19 +82,22 @@ export interface AugmentWorkingImageResult {
   image: string;
 }
 
-/** Stable identifiers for swappable hold-detector implementations. */
-export type HoldDetectorMethod =
-  | "mask_cnn_hold_det"
-  | "yolov8"
-  | "sam3"
-  | "ground_truth";
+/**
+ * Stable identifiers for swappable hold-detector implementations, per
+ * docs/diagrams/spec_rest_api.drawio.svg's PUT /pipeline sketch. Not yet
+ * wired to real distinct behavior server-side -- only "mock"
+ * (src/pipeline/hold_detector/mock_hold_detector.py) exists today, so the
+ * real backend currently ignores this value's content (still sends it, for
+ * forward compatibility once SAM3/yolov8/etc. land). Loosened to `string`
+ * rather than a strict union since the model-select UI's labels
+ * (WallImageWorkspace's HOLD_MODEL_OPTIONS) don't map onto this enum
+ * one-to-one yet -- tighten this back up once they do.
+ */
+export type HoldDetectorMethod = string;
 
-/** Stable identifiers for swappable route-classifier implementations. */
-export type RouteClassifierMethod =
-  | "color_only"
-  | "color_spatial"
-  | "dino_only"
-  | "color_spatial_dino";
+/** Same situation as {@link HoldDetectorMethod}, for route-discriminator
+ * implementations -- only "mock" (mock_route_discriminator.py) exists. */
+export type RouteClassifierMethod = string;
 
 export interface PipelineConfig {
   holdDetector: HoldDetectorMethod;
