@@ -80,11 +80,11 @@
   box-shadow: var(--shadow-sm);
 }
 
-/* The toolbar's entrance -- its two pieces rise and clear into place
-   rather than just appearing, with the lighting slider following the
-   source buttons by a beat so it reads as a small cascade rather than
-   one flat block. A slight overshoot on the way in (same spring feel as
-   the segment panel's own reform/pop moments) gives it a bit of life. */
+/* The toolbar's entrance -- its three pieces rise and clear into place
+   rather than just appearing, each following the last by a beat so it
+   reads as a small cascade rather than one flat block. A slight overshoot
+   on the way in (same spring feel as the segment panel's own reform/pop
+   moments) gives it a bit of life. */
 .toolbarItem {
   opacity: 0;
   filter: blur(6px);
@@ -95,6 +95,10 @@
     transform 550ms cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
+.toolbarItemActions {
+  transition-delay: 65ms;
+}
+
 .toolbarItemLighting {
   transition-delay: 130ms;
 }
@@ -103,6 +107,17 @@
   opacity: 1;
   filter: blur(0);
   transform: translateY(0) scale(1);
+}
+
+/* Detect Holds / Finish Augment, alongside the source buttons -- a thin
+   divider stands in for the visual break the canvas used to give these
+   from the rest of the toolbar, now that they all share one bar. */
+.toolbarActions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding-left: 0.85rem;
+  border-left: 1px solid var(--border);
 }
 
 .lighting {
@@ -176,6 +191,38 @@
   border-color: var(--accent);
 }
 
+/* Stands in for the toolbar, top-right, for the model-select gap between
+   Finish Augment and a successful Recognition (see showBackToAugment in
+   the component) -- unlike .toolbar/.lockedModelsSlot this is a bare
+   button, not another glass-surface bar, since it's a lone way back rather
+   than a row of controls. Right-aligned within the shared toolbarArea
+   cell; same rise+fade entrance vocabulary as .toolbarItem for a
+   consistent "something just arrived here" feel. */
+.backToAugmentSlot {
+  display: flex;
+  justify-content: flex-end;
+  /* Without this, the button stretches to match .toolbarArea's shared
+     grid-cell height (set by the taller .toolbar/.lockedModelsSlot it's
+     stacked with) -- flex's default align-items: stretch -- so its own
+     vertical padding/font-size below have zero visible effect on height.
+     This lets the button size itself instead. */
+  align-items: center;
+  opacity: 0;
+  filter: blur(6px);
+  transform: translateY(-14px) scale(0.96);
+  transition:
+    opacity 550ms var(--ease),
+    filter 550ms var(--ease),
+    transform 550ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.backToAugmentSlotIn {
+  opacity: 1;
+  filter: blur(0);
+  transform: translateY(0) scale(1);
+}
+
+
 .error {
   flex-shrink: 0;
   display: flex;
@@ -203,10 +250,19 @@
   display: grid;
   /* Fixed tracks -- the canvas column's size never depends on whether the
      segment sidebar is currently showing or fading out, so finishing
-     augmentation never makes the wall image resize. */
+     augmentation never makes the wall image resize. .mainGridFull below is
+     a deliberate, narrow exception to that -- see showFullWidthCanvas in
+     the component for exactly which moment it covers. */
   grid-template-columns: minmax(0, 1fr) minmax(260px, 420px);
   gap: 1.5rem;
   align-items: stretch;
+}
+
+/* Nothing real for the sidebar to show yet (see showFullWidthCanvas) --
+   .segmentSlotHidden takes it out of the grid below entirely, so this
+   single remaining track is all there is and the canvas fills it. */
+.mainGridFull {
+  grid-template-columns: 1fr;
 }
 
 .canvasColumn {
@@ -233,6 +289,13 @@
   grid-area: 1 / 1;
   min-height: 0;
   min-width: 0;
+}
+
+/* Declared after .segmentSlot itself (equal specificity either way -- this
+   has to win the cascade on source order, not just intent) so it actually
+   overrides that display: grid instead of silently losing to it. */
+.segmentSlotHidden {
+  display: none;
 }
 
 /* Takes over the segment sidebar's spot once SegmentPanel has fully
@@ -615,6 +678,15 @@
     gap: 0.75rem;
   }
 
+  /* .toolbarActions' divider assumes a neighbor to its left on the same
+     line -- at this width .toolbar's own wrap has usually already dropped
+     it to a fresh row by itself, where that edge just reads as a stray
+     leftover line. */
+  .toolbarActions {
+    padding-left: 0;
+    border-left: none;
+  }
+
   /* Side by side is too cramped at this width for text like "Select route
      model" -- falls back to stacked here, same as it was before this was
      asked for a wider row layout. */
@@ -626,6 +698,7 @@
 @media (prefers-reduced-motion: reduce) {
   .toolbarSlot,
   .toolbarItem,
+  .backToAugmentSlot,
   .modelSelectPanel,
   .recognitionButtonWrap,
   .routesPanel,

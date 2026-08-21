@@ -62,7 +62,11 @@
 .image {
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  /* cover, not contain -- contain letterboxes whenever the photo's aspect
+     ratio doesn't exactly match the box's (i.e. almost always), leaving
+     empty glass-surface bars on two sides. This fills the box completely
+     instead, cropping the excess rather than shrinking to fit. */
+  object-fit: cover;
   cursor: crosshair;
   display: block;
   transition: filter var(--dur-fast) linear;

@@ -157,6 +157,15 @@ export function WallImageWorkspace() {
   const [error, setError] = useState<string | null>(null);
   const [augmentDone, setAugmentDone] = useState(false);
   const [toolbarEntered, setToolbarEntered] = useState(false);
+  // Detect Holds/Finish Augment and the Lighting slider's own entrance --
+  // separate from toolbarEntered above since that one only ever fires
+  // once, right at mount, while these two first mount later (once an
+  // image is loaded, possibly long after) and need their own "before"
+  // frame to animate from each time they (re)appear.
+  const [actionsEntered, setActionsEntered] = useState(false);
+  // The small standalone "Back to Augment" that takes the toolbar's place,
+  // top-right, once augmentDone hides it -- see showBackToAugment below.
+  const [backToAugmentEntered, setBackToAugmentEntered] = useState(false);
   const [showModelSelect, setShowModelSelect] = useState(false);
   const [modelSelectEntered, setModelSelectEntered] = useState(false);
   const [holdModel, setHoldModel] = useState<string | null>(null);
@@ -242,6 +251,75 @@ export function WallImageWorkspace() {
       cancelAnimationFrame(raf2);
     };
   }, []);
+
+  // Detect Holds/Finish Augment and the Lighting slider only ever make
+  // sense once there's an image to point at/adjust -- hidden entirely
+  // (not just disabled) until then, with their own "wait a paint, then
+  // trigger" entrance each time imageId goes from unset to set, same
+  // reasoning as the toolbar's own mount effect above but re-armed on
+  // this narrower trigger instead of firing once.
+  useEffect(() => {
+    if (!imageId) {
+      // Deferred (not called synchronously in the effect body) same as the
+      // "arm" branch below -- doesn't need to be immediate, since this
+      // group is already unmounted the instant imageId clears (see the
+      // {imageId && ...} guard around it); this just resets the flag so a
+      // *later* reappearance gets a real entrance again instead of
+      // snapping straight to "in".
+      const raf = requestAnimationFrame(() => setActionsEntered(false));
+      return () => cancelAnimationFrame(raf);
+    }
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => setActionsEntered(true));
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+  }, [imageId]);
+
+  // Full-width canvas for as long as there's nothing real for the segment
+  // sidebar to show yet -- SegmentPanel's own "empty" (no image) and
+  // "prompt" (image, no segments) phases are just placeholder copy
+  // ("Upload an image..."/"Select a spot..."), so the image (or its own
+  // empty-state placeholder) gets that space instead, from first paint
+  // right up until Detect Holds lands a real segment. .mainGrid's own
+  // comment on why its tracks are otherwise fixed-size still holds for
+  // every stage after this one, this is a deliberate, narrowly-scoped
+  // exception to it, not a rule change. augmentDone excluded too: once
+  // Finish Augment is pressed with zero segments (skipping hold-marking
+  // entirely), the model-select/recognition stages afterward should still
+  // look like they always have, not full-width.
+  const showFullWidthCanvas = segments.length === 0 && !augmentDone;
+
+  // The standalone "Back to Augment" that stands in for the toolbar, top
+  // right, for exactly the model-select gap: augmentDone hides the toolbar
+  // (and, with it, the "Back to Augment" that used to live inside it) the
+  // instant Finish Augment is pressed, but showLockedModels' own "Change
+  // model" bar doesn't take over that spot until Recognition actually
+  // succeeds. Without this, there'd be no way back to Augment in between.
+  const showBackToAugment = augmentDone && !showLockedModels;
+
+  useEffect(() => {
+    if (!showBackToAugment) {
+      // Deferred for the same reason as actionsEntered's reset above --
+      // this slot is already unmounted by the time this branch runs, so
+      // only a *later* reappearance (e.g. showing again after "Change
+      // model" un-shows the locked-model chips) is what actually needs
+      // this flag back at false.
+      const raf = requestAnimationFrame(() => setBackToAugmentEntered(false));
+      return () => cancelAnimationFrame(raf);
+    }
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => setBackToAugmentEntered(true));
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+  }, [showBackToAugment]);
 
   // Once the toolbar and segment panel have both fully finished leaving,
   // the model pickers take over that same area -- mounted only then (not
@@ -677,11 +755,37 @@ export function WallImageWorkspace() {
                 }}
               />
             </div>
-            <div
-              className={`${styles.lighting} ${styles.toolbarItem} ${styles.toolbarItemLighting} ${toolbarEntered ? styles.toolbarItemIn : ""}`}
-            >
-              <LabeledSlider label="Lighting" value={lighting} onChange={setLighting} />
-            </div>
+            {imageId && (
+              <div
+                className={`${styles.toolbarActions} ${styles.toolbarItem} ${styles.toolbarItemActions} ${actionsEntered ? styles.toolbarItemIn : ""}`}
+              >
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={pendingPoints.length === 0 || detecting}
+                  onClick={handleDetectSegments}
+                >
+                  {detecting
+                    ? "Detecting…"
+                    : `Detect Holds${pendingPoints.length > 0 ? ` (${pendingPoints.length})` : ""}`}
+                </Button>
+                <Button
+                  type="button"
+                  variant="primary"
+                  disabled={loading}
+                  onClick={augmentDone ? handleBackToAugment : handleFinishAugment}
+                >
+                  {augmentDone ? "Back to Augment" : "Finish Augment"}
+                </Button>
+              </div>
+            )}
+            {imageId && (
+              <div
+                className={`${styles.lighting} ${styles.toolbarItem} ${styles.toolbarItemLighting} ${actionsEntered ? styles.toolbarItemIn : ""}`}
+              >
+                <LabeledSlider label="Lighting" value={lighting} onChange={setLighting} />
+              </div>
+            )}
           </div>
         </div>
 
@@ -700,6 +804,16 @@ export function WallImageWorkspace() {
             </button>
           </div>
         )}
+
+        {showBackToAugment && (
+          <div
+            className={`${styles.backToAugmentSlot} ${backToAugmentEntered ? styles.backToAugmentSlotIn : ""}`}
+          >
+            <Button type="button" variant="primary" onClick={handleBackToAugment}>
+              Back to Augment
+            </Button>
+          </div>
+        )}
       </div>
 
       {error && (
@@ -709,7 +823,7 @@ export function WallImageWorkspace() {
         </p>
       )}
 
-      <div className={styles.mainGrid}>
+      <div className={`${styles.mainGrid} ${showFullWidthCanvas ? styles.mainGridFull : ""}`}>
         <div className={styles.canvasColumn}>
           <ImageCanvas
             imageSrc={imageSrc}
@@ -728,7 +842,7 @@ export function WallImageWorkspace() {
               setWebcamActive(false);
             }}
             onAddSegmentPoint={handleAddSegmentPoint}
-            interactive={!pastRecognition}
+            interactive={!pastRecognition && !augmentDone}
             showHoldOutline={!pastRecognition}
             overlay={
               recognitionDone &&
@@ -765,25 +879,11 @@ export function WallImageWorkspace() {
               )
             }
           />
-          <Button
-            type="button"
-            variant="secondary"
-            disabled={!imageId || pendingPoints.length === 0 || detecting}
-            onClick={handleDetectSegments}
-          >
-            {detecting ? "Detecting…" : `Detect Holds${pendingPoints.length > 0 ? ` (${pendingPoints.length})` : ""}`}
-          </Button>
-          <Button
-            type="button"
-            variant="primary"
-            disabled={!imageId || loading}
-            onClick={augmentDone ? handleBackToAugment : handleFinishAugment}
-          >
-            {augmentDone ? "Back to Augment" : "Finish Augment"}
-          </Button>
         </div>
 
-        <div className={styles.segmentSlot}>
+        <div
+          className={`${styles.segmentSlot} ${showFullWidthCanvas ? styles.segmentSlotHidden : ""}`}
+        >
           <SegmentPanel
             hasImage={!!imageId}
             segments={segments}
