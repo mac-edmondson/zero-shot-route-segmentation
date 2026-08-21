@@ -176,21 +176,30 @@ export const mockApiClient: RouteDetectionApiClient = {
     if (!image) {
       return Promise.reject(new ApiError("Working image no longer exists", 404));
     }
-    return delay({ imageId: image.id, image: image.dataUrl });
-  },
-
-  setWorkingImage(imageId) {
-    const image = images.get(imageId);
-    if (!image) {
-      return Promise.reject(new ApiError(`No image with id "${imageId}"`, 404));
-    }
-    workingImageId = imageId;
-    segments.clear();
-    const result: WorkingImage = { imageId: image.id, image: image.dataUrl };
+    const result: WorkingImage = {
+      status: "completed",
+      imageId: image.id,
+      image: image.dataUrl,
+      error: null,
+    };
     return delay(result);
   },
 
-  detectWorkingSegments(_image, coordinates) {
+  async setWorkingImage(file) {
+    const dataUrl = await fileToDataUrl(file);
+    const summary: StoredImage = {
+      id: createId("img"),
+      title: file instanceof File ? file.name : "captured-frame",
+      category: "wall",
+      dataUrl,
+    };
+    images.set(summary.id, summary);
+    workingImageId = summary.id;
+    segments.clear();
+    await delay(undefined);
+  },
+
+  detectWorkingSegments(coordinates) {
     if (!workingImageId) {
       return Promise.reject(new ApiError("No working image set", 409));
     }
@@ -216,21 +225,24 @@ export const mockApiClient: RouteDetectionApiClient = {
       return Promise.reject(new ApiError("No working image set", 409));
     }
     const image = images.get(workingImageId)!;
-    // The mock has no real augmentation pipeline (chalk/lighting rendering),
-    // so it just echoes the source image back. A real backend would return
-    // the materialized, augmented image bytes here.
-    return delay({ imageId: image.id, image: image.dataUrl });
+    // The mock has no real augmentation pipeline (chalk/lighting/color
+    // rendering), so it just echoes the source image back. A real backend
+    // would return the materialized, augmented image bytes here.
+    const result: WorkingImage = {
+      status: "completed",
+      imageId: image.id,
+      image: image.dataUrl,
+      error: null,
+    };
+    return delay(result);
   },
 
-  inferWorkingPipeline(_image, _augmentation, config) {
-    // The mock has no real pipeline to run (like augmentWorkingImage above),
-    // so `_image`/`_augmentation` -- exactly what a real backend would need
-    // alongside `config` to actually detect anything -- go unused here;
-    // this just fabricates routes out of whatever's already in `segments`.
-    // Record the effective config so a later `getPipeline()` reflects any
-    // one-off override passed to this call, mirroring how a real backend
-    // would persist "last used" pipeline settings.
-    pipelineConfig = { ...pipelineConfig, ...config };
+  inferWorkingPipeline() {
+    // The mock has no real pipeline to run (like augmentWorkingImage
+    // above); this just fabricates routes out of whatever's already in
+    // `segments`, using whatever config `setPipeline` last recorded (the
+    // real backend resolves the same way -- via `PUT /pipeline`, not an
+    // argument to this call).
     const result: InferenceResult = {
       status: "completed",
       routes: Array.from(segments.values()).map((segment, index) => ({
@@ -247,6 +259,7 @@ export const mockApiClient: RouteDetectionApiClient = {
         routeClassifierLatencyMs: MOCK_LATENCY_MS,
         routeCount: segments.size,
       },
+      error: null,
     };
     return delay(result);
   },

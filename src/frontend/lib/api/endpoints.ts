@@ -1,7 +1,8 @@
 import { API_BASE_URL } from "./config";
 import { request, requestBlob } from "./client";
 import type { RouteDetectionApiClient } from "./contract";
-import type { AvailableConfigs, Coordinate, InferenceResult, Segment } from "./types";
+import type { AvailableConfigs, Coordinate, InferenceResult, JobStatus, Segment, WorkingImage } from "./types";
+import { ApiError } from "./types";
 
 /** One entry returned by Nginx's JSON autoindex for the gallery directory. */
 interface GalleryDirectoryEntry {
@@ -15,12 +16,26 @@ function galleryImageUrl(category: string, name: string): string {
   return `${API_BASE_URL}/images/${encodeURIComponent(category)}/${encodeURIComponent(name)}`;
 }
 
-/** Wire shape returned by `POST /image/working/segments` (src/backend/schemas.py). */
-interface DetectSegmentsResponse {
+/** Wire shape returned by `GET /image/working` (src/backend/schemas.py: WorkingImageResponse). */
+interface WorkingImageResponse {
+  status: JobStatus;
+  image: string | null;
+  image_id: string | null;
+  error: string | null;
+}
+
+function mapWorkingImage(raw: WorkingImageResponse): WorkingImage {
+  return { status: raw.status, imageId: raw.image_id, image: raw.image, error: raw.error };
+}
+
+/** Wire shape returned by `GET /image/working/segment` (src/backend/schemas.py: SegmentStatusResponse). */
+interface SegmentStatusResponse {
+  status: JobStatus;
   segments: {
     segment_id: string;
     polygon: { points: Coordinate[] };
   }[];
+  error: string | null;
 }
 
 /** Wire shape returned by `GET /pipeline/available_configs` (src/backend/schemas.py). */
@@ -29,8 +44,9 @@ interface AvailableConfigsResponse {
   route_classifier: string[];
 }
 
-/** Wire shape returned by `POST /pipeline/infer/working` (src/backend/schemas.py). */
+/** Wire shape returned by `GET /pipeline/infer/working` (src/backend/schemas.py: InferWorkingResponse). */
 interface InferWorkingResponse {
+  status: JobStatus;
   routes: {
     route_id: number;
     holds: {
@@ -39,6 +55,31 @@ interface InferWorkingResponse {
     }[];
   }[];
   inference_metrics: Record<string, number>;
+  error: string | null;
+}
+
+const POLL_INTERVAL_MS = 500;
+const POLL_TIMEOUT_MS = 60_000;
+
+/**
+ * Segmentation, augmentation, and inference all run as background jobs on
+ * the backend now (see routes.py) -- the request that starts one returns
+ * immediately (202), and the actual result only shows up once a follow-up
+ * GET reports something other than "processing". This polls `fetchStatus`
+ * on an interval until that happens, or `POLL_TIMEOUT_MS` runs out.
+ */
+async function pollUntilSettled<T extends { status: JobStatus }>(
+  fetchStatus: () => Promise<T>,
+): Promise<T> {
+  const deadline = Date.now() + POLL_TIMEOUT_MS;
+  for (;;) {
+    const result = await fetchStatus();
+    if (result.status !== "processing") return result;
+    if (Date.now() >= deadline) {
+      throw new ApiError("Timed out waiting for the backend to finish");
+    }
+    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+  }
 }
 
 /**
@@ -63,28 +104,36 @@ export const restApiClient: RouteDetectionApiClient = {
     return request(`/image/${id}`, { signal });
   },
 
-  getWorkingImage(signal) {
-    return request("/image/working", { signal });
+  async getWorkingImage(signal) {
+    const raw = await request<WorkingImageResponse>("/image/working", { signal });
+    return mapWorkingImage(raw);
   },
 
-  setWorkingImage(imageId) {
-    return request("/image/working", { method: "PUT", body: { imageId } });
-  },
-
-  async detectWorkingSegments(image, coordinates) {
+  async setWorkingImage(file) {
     const form = new FormData();
-    form.append("image", image);
-    form.append("all_points_x", JSON.stringify(coordinates.map((c) => c.x)));
-    form.append("all_points_y", JSON.stringify(coordinates.map((c) => c.y)));
+    form.append("image", file);
+    await request("/image/working", { method: "PUT", body: form });
+  },
 
-    const { segments } = await request<DetectSegmentsResponse>(
-      "/image/working/segments",
-      { method: "POST", body: form },
+  async detectWorkingSegments(coordinates) {
+    await request("/image/working/segment", {
+      method: "POST",
+      body: { coordinates: coordinates.map(({ x, y }) => ({ x, y })) },
+    });
+
+    const status = await pollUntilSettled(() =>
+      request<SegmentStatusResponse>("/image/working/segment"),
     );
+    if (status.status === "failed") {
+      throw new ApiError(status.error ?? "Segmentation failed");
+    }
 
-    // Backend returns one polygon per input point, in the same order --
-    // zip back up with the coordinate that produced each one.
-    return segments.map((segment, index) => {
+    // The backend never echoes back which point produced which segment, but
+    // segments accumulate in submission order -- the last `coordinates.length`
+    // entries are exactly the ones this call just created, still lined up
+    // with the coordinates that produced them.
+    const created = status.segments.slice(-coordinates.length);
+    return created.map((segment, index) => {
       const point = coordinates[index];
       return {
         segmentId: segment.segment_id,
@@ -98,33 +147,30 @@ export const restApiClient: RouteDetectionApiClient = {
     return request(`/image/working/segment/${segmentId}`, { method: "DELETE" });
   },
 
-  augmentWorkingImage(body) {
-    return request("/image/working/augment", { method: "POST", body });
+  async augmentWorkingImage(body) {
+    await request("/image/working/augment", { method: "POST", body });
+
+    const raw = await pollUntilSettled(() =>
+      request<WorkingImageResponse>("/image/working"),
+    );
+    if (raw.status === "failed") {
+      throw new ApiError(raw.error ?? "Augmentation failed");
+    }
+    return mapWorkingImage(raw);
   },
 
-  async inferWorkingPipeline(image, augmentation, config) {
-    const form = new FormData();
-    form.append("image", image);
-    form.append("lighting_percent", String(augmentation.lightingPercent));
-    form.append(
-      "segments",
-      JSON.stringify(
-        augmentation.segments.map((segment) => ({
-          segment_id: segment.segmentId,
-          chalk_percent: segment.chalkPercent,
-        })),
-      ),
-    );
-    form.append("hold_detector", config.holdDetector);
-    form.append("route_discriminator", config.routeClassifier);
+  async inferWorkingPipeline() {
+    await request("/pipeline/infer/working", { method: "POST" });
 
-    const raw = await request<InferWorkingResponse>("/pipeline/infer/working", {
-      method: "POST",
-      body: form,
-    });
+    const raw = await pollUntilSettled(() =>
+      request<InferWorkingResponse>("/pipeline/infer/working"),
+    );
+    if (raw.status === "failed") {
+      throw new ApiError(raw.error ?? "Inference failed");
+    }
 
     return {
-      status: "completed",
+      status: raw.status,
       routes: raw.routes.map((route) => ({
         routeId: route.route_id,
         holds: route.holds.map((hold) => ({
@@ -133,6 +179,7 @@ export const restApiClient: RouteDetectionApiClient = {
         })),
       })),
       inferenceMetrics: raw.inference_metrics,
+      error: raw.error,
     } satisfies InferenceResult;
   },
 
