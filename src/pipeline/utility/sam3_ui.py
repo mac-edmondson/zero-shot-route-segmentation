@@ -1,4 +1,4 @@
-"""Shared SAM3 lifecycle, video adapter, and UI wrapper."""
+"""SAM 3 Wrapper Class"""
 
 from __future__ import annotations
 
@@ -107,7 +107,6 @@ class SAM3Base:
         ):
             raise ValueError("Masks must be binary boolean or numeric 0/1 arrays.")
         return np.equal(masks, 1)
-
 
 
 Exemplar: TypeAlias = tuple[Image.Image, np.ndarray]
