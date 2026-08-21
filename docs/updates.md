@@ -36,3 +36,12 @@ annotations, deterministic split assignment, and augmentation metadata.
 This layer deliberately does not perform Mask R-CNN or TripletNet tensor
 preprocessing. Those adapters retain their validated BGR/config-driven
 preprocessing behavior.
+
+## SAM3 adapters
+
+Shared SAM3 lifecycle, device, local-artifact, and binary-mask helpers live in
+`utility/sam3.py`. The click-guided `SAMWrapper` now lives in
+`hold_detector/sam3_ui.py`; `utility/sam3_ui.py` remains a compatibility
+re-export. `sam3_hold_detector.py` remains the automatic text/exemplar
+`HoldDetector` and reuses the same utility. Only the automatic detector is
+registered in `HoldDetectorFactory` because the UI adapter requires clicks.
