@@ -42,6 +42,7 @@ class SegmentStatusResponse(BaseModel):
     segments: list[SegmentResult] = Field(default_factory=list)
     error: str | None = None
 
+
 class RGBColor(BaseModel):
     r: int = Field(ge=0, le=255)
     g: int = Field(ge=0, le=255)

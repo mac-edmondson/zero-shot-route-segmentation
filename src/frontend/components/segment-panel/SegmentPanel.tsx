@@ -12,6 +12,13 @@ interface SegmentPanelProps {
   chalkBySegmentId: Record<string, number>;
   onChalkChange: (segmentId: string, value: number) => void;
   onRemove: (segmentId: string) => void;
+  /** Hex color sampled from the image for each segment, if any -- see
+   * ImageCanvas's colorBySegmentId. */
+  colorBySegmentId: Record<string, string>;
+  /** segmentId of the card currently waiting for a click on the image to
+   * sample from, or null if no pick is in progress. */
+  pickingSegmentId: string | null;
+  onChooseColor: (segmentId: string) => void;
   /**
    * True once the parent is wrapping up and this panel should play its
    * exit -- reuses the exact same shrink-to-a-hold-then-reform sequence as
@@ -232,6 +239,9 @@ export function SegmentPanel({
   chalkBySegmentId,
   onChalkChange,
   onRemove,
+  colorBySegmentId,
+  pickingSegmentId,
+  onChooseColor,
   closing = false,
 }: SegmentPanelProps) {
   // "empty"/"prompt"/"panel" are plain functions of the props -- no effect
@@ -424,6 +434,9 @@ export function SegmentPanel({
                 chalkPercent={chalkBySegmentId[segment.segmentId] ?? 0}
                 onChalkChange={(value) => onChalkChange(segment.segmentId, value)}
                 onRemove={() => onRemove(segment.segmentId)}
+                colorHex={colorBySegmentId[segment.segmentId] ?? null}
+                picking={pickingSegmentId === segment.segmentId}
+                onChooseColor={() => onChooseColor(segment.segmentId)}
               />
             ))}
           </div>

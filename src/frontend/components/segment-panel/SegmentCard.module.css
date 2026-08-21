@@ -63,6 +63,31 @@
   color: var(--danger);
 }
 
+.colorRow {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+/* Empty (no color picked yet) reads as a plain ring on the transparent
+ * background set inline from colorHex; picked, the ring just frames the
+ * solid fill. */
+.swatch {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border-strong);
+  box-shadow: inset 0 0 0 2px var(--surface-2);
+  transition: background-color var(--dur-fast) var(--ease);
+}
+
+.colorButton {
+  flex: 1;
+  padding: 0.55rem 0.9rem;
+  font-size: 0.82rem;
+}
+
 @media (max-width: 480px) {
   .card {
     padding: 0.75rem 0.85rem;

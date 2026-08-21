@@ -1,6 +1,7 @@
 import { MOCK_GALLERY_BASE_URL } from "../config";
 import type { RouteDetectionApiClient } from "../contract";
 import type {
+  AvailableConfigs,
   Coordinate,
   GalleryImage,
   ImageSummary,
@@ -132,6 +133,16 @@ let pipelineConfig: PipelineConfig = {
   routeClassifier: "color_spatial_dino",
 };
 
+// Same labels the real backend's hold_detector_factory/
+// route_discriminator_factory registries resolve method names through
+// (src/pipeline/*/*_factory.py) -- kept as a fixed mock list here rather
+// than trying to fabricate a registry, same "small stand-in" treatment as
+// MOCK_GALLERY_CATEGORIES above.
+const MOCK_AVAILABLE_CONFIGS: AvailableConfigs = {
+  holdDetector: ["Color-only", "DINO-only", "Combined"],
+  routeClassifier: ["Color-only", "Color + Spatial", "Combined"],
+};
+
 export const mockApiClient: RouteDetectionApiClient = {
   listImages() {
     return delay(Array.from(images.values()).map(({ id, title, category }) => ({ id, title, category })));
@@ -247,6 +258,10 @@ export const mockApiClient: RouteDetectionApiClient = {
   setPipeline(config) {
     pipelineConfig = config;
     return delay(pipelineConfig);
+  },
+
+  getAvailableConfigs() {
+    return delay(MOCK_AVAILABLE_CONFIGS);
   },
 
   listGalleryCategories() {

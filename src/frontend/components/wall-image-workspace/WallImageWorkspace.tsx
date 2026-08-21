@@ -15,9 +15,6 @@ import { StepIndicator } from "@/components/step-indicator/StepIndicator";
 import { ModelSelect } from "@/components/model-select/ModelSelect";
 import styles from "./WallImageWorkspace.module.css";
 
-const HOLD_MODEL_OPTIONS = ["Color-only", "DINO-only", "Combined"];
-const ROUTE_MODEL_OPTIONS = ["Color-only", "Color + Spatial", "Combined"];
-
 /**
  * How long SegmentPanel's own closing sequence takes end to end (shrink
  * 530ms + reform ~895ms + its final opacity fade 450ms -- see
@@ -141,7 +138,18 @@ export function WallImageWorkspace() {
   const [pendingPoints, setPendingPoints] = useState<Coordinate[]>([]);
   const [detecting, setDetecting] = useState(false);
   const [chalkBySegmentId, setChalkBySegmentId] = useState<Record<string, number>>({});
-  const [lighting, setLighting] = useState(0);
+  // Hex color sampled from the image for each segment (SegmentCard's
+  // "Choose color" eyedropper) -- purely a client-side preview tint on
+  // that segment's own polygon outline, so unlike chalk/lighting this
+  // never goes into buildAugmentationPayload below.
+  const [colorBySegmentId, setColorBySegmentId] = useState<Record<string, string>>({});
+  // segmentId of the card currently waiting on a click on the image to
+  // sample from, or null if no pick is in progress.
+  const [pickingColorSegmentId, setPickingColorSegmentId] = useState<string | null>(null);
+  // 50 is the slider's midpoint -- the original, unmodified image. See
+  // ImageCanvas's lightingPercent doc for how values on either side map
+  // to darker/lighter.
+  const [lighting, setLighting] = useState(50);
   const [webcamActive, setWebcamActive] = useState(false);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [gallerySelecting, setGallerySelecting] = useState(false);
@@ -149,10 +157,25 @@ export function WallImageWorkspace() {
   const [error, setError] = useState<string | null>(null);
   const [augmentDone, setAugmentDone] = useState(false);
   const [toolbarEntered, setToolbarEntered] = useState(false);
+  // Detect Holds/Finish Augment and the Lighting slider's own entrance --
+  // separate from toolbarEntered above since that one only ever fires
+  // once, right at mount, while these two first mount later (once an
+  // image is loaded, possibly long after) and need their own "before"
+  // frame to animate from each time they (re)appear.
+  const [actionsEntered, setActionsEntered] = useState(false);
+  // The small standalone "Back to Augment" that takes the toolbar's place,
+  // top-right, once augmentDone hides it -- see showBackToAugment below.
+  const [backToAugmentEntered, setBackToAugmentEntered] = useState(false);
   const [showModelSelect, setShowModelSelect] = useState(false);
   const [modelSelectEntered, setModelSelectEntered] = useState(false);
   const [holdModel, setHoldModel] = useState<string | null>(null);
   const [routeModel, setRouteModel] = useState<string | null>(null);
+  // The two model-select dropdowns' own option lists -- fetched once from
+  // GET /pipeline/available_configs rather than hardcoded here, so a newly
+  // registered pipeline method (src/pipeline/*/*_factory.py) shows up
+  // without a frontend deploy. Empty until that first fetch resolves.
+  const [holdModelOptions, setHoldModelOptions] = useState<string[]>([]);
+  const [routeModelOptions, setRouteModelOptions] = useState<string[]>([]);
   const [inferring, setInferring] = useState(false);
 
   // Recognition results -- another phase of this same page, not a route
@@ -194,6 +217,27 @@ export function WallImageWorkspace() {
   const [queuedRouteId, setQueuedRouteId] = useState<number | null>(null);
   const [selectedHoldIndex, setSelectedHoldIndex] = useState<number | null>(null);
 
+  // Fetched once on mount -- well before the user could ever reach the
+  // model-select step -- rather than on-demand when that step first shows,
+  // so the dropdowns already have their options the instant they appear
+  // instead of opening on an empty list and populating a beat later.
+  useEffect(() => {
+    const controller = new AbortController();
+    apiClient
+      .getAvailableConfigs(controller.signal)
+      .then(({ holdDetector, routeClassifier }) => {
+        setHoldModelOptions(holdDetector);
+        setRouteModelOptions(routeClassifier);
+      })
+      .catch(() => {
+        // See GalleryPicker's identical categories effect for why this
+        // checks our own controller instead of the caught error.
+        if (controller.signal.aborted) return;
+        setError("Couldn't load the available models. Try again.");
+      });
+    return () => controller.abort();
+  }, []);
+
   // Mount, wait a paint, then trigger -- without the gap there's no
   // "before" frame for the browser to animate from, so the toolbar's two
   // pieces would just appear already in place instead of rising in.
@@ -207,6 +251,75 @@ export function WallImageWorkspace() {
       cancelAnimationFrame(raf2);
     };
   }, []);
+
+  // Detect Holds/Finish Augment and the Lighting slider only ever make
+  // sense once there's an image to point at/adjust -- hidden entirely
+  // (not just disabled) until then, with their own "wait a paint, then
+  // trigger" entrance each time imageId goes from unset to set, same
+  // reasoning as the toolbar's own mount effect above but re-armed on
+  // this narrower trigger instead of firing once.
+  useEffect(() => {
+    if (!imageId) {
+      // Deferred (not called synchronously in the effect body) same as the
+      // "arm" branch below -- doesn't need to be immediate, since this
+      // group is already unmounted the instant imageId clears (see the
+      // {imageId && ...} guard around it); this just resets the flag so a
+      // *later* reappearance gets a real entrance again instead of
+      // snapping straight to "in".
+      const raf = requestAnimationFrame(() => setActionsEntered(false));
+      return () => cancelAnimationFrame(raf);
+    }
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => setActionsEntered(true));
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+  }, [imageId]);
+
+  // Full-width canvas for as long as there's nothing real for the segment
+  // sidebar to show yet -- SegmentPanel's own "empty" (no image) and
+  // "prompt" (image, no segments) phases are just placeholder copy
+  // ("Upload an image..."/"Select a spot..."), so the image (or its own
+  // empty-state placeholder) gets that space instead, from first paint
+  // right up until Detect Holds lands a real segment. .mainGrid's own
+  // comment on why its tracks are otherwise fixed-size still holds for
+  // every stage after this one, this is a deliberate, narrowly-scoped
+  // exception to it, not a rule change. augmentDone excluded too: once
+  // Finish Augment is pressed with zero segments (skipping hold-marking
+  // entirely), the model-select/recognition stages afterward should still
+  // look like they always have, not full-width.
+  const showFullWidthCanvas = segments.length === 0 && !augmentDone;
+
+  // The standalone "Back to Augment" that stands in for the toolbar, top
+  // right, for exactly the model-select gap: augmentDone hides the toolbar
+  // (and, with it, the "Back to Augment" that used to live inside it) the
+  // instant Finish Augment is pressed, but showLockedModels' own "Change
+  // model" bar doesn't take over that spot until Recognition actually
+  // succeeds. Without this, there'd be no way back to Augment in between.
+  const showBackToAugment = augmentDone && !showLockedModels;
+
+  useEffect(() => {
+    if (!showBackToAugment) {
+      // Deferred for the same reason as actionsEntered's reset above --
+      // this slot is already unmounted by the time this branch runs, so
+      // only a *later* reappearance (e.g. showing again after "Change
+      // model" un-shows the locked-model chips) is what actually needs
+      // this flag back at false.
+      const raf = requestAnimationFrame(() => setBackToAugmentEntered(false));
+      return () => cancelAnimationFrame(raf);
+    }
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => setBackToAugmentEntered(true));
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+  }, [showBackToAugment]);
 
   // Once the toolbar and segment panel have both fully finished leaving,
   // the model pickers take over that same area -- mounted only then (not
@@ -262,8 +375,16 @@ export function WallImageWorkspace() {
   const showRecognitionButton = holdModel !== null && routeModel !== null;
   const [recognitionEntered, setRecognitionEntered] = useState(false);
 
+  // Also keyed on showModelSelect (not just showRecognitionButton) so
+  // "Change model" re-arms this entrance too. handleChangeModel doesn't
+  // clear holdModel/routeModel, so showRecognitionButton is already true
+  // the moment the panel remounts -- without showModelSelect in the deps,
+  // this effect wouldn't rerun on that round trip, recognitionEntered would
+  // stay stale-true from the first time around, and the button would render
+  // already fully "in" while modelSelectRow is still mid-FLIP-slide back
+  // from the locked chips, i.e. it'd appear before the dropdown ever shows.
   useEffect(() => {
-    if (!showRecognitionButton) {
+    if (!showRecognitionButton || !showModelSelect) {
       setRecognitionEntered(false);
       return;
     }
@@ -275,7 +396,7 @@ export function WallImageWorkspace() {
       cancelAnimationFrame(raf1);
       cancelAnimationFrame(raf2);
     };
-  }, [showRecognitionButton]);
+  }, [showRecognitionButton, showModelSelect]);
 
   const routes = useMemo(() => recognitionResult?.routes ?? [], [recognitionResult]);
 
@@ -363,6 +484,8 @@ export function WallImageWorkspace() {
       setSegments([]);
       setPendingPoints([]);
       setChalkBySegmentId({});
+      setColorBySegmentId({});
+      setPickingColorSegmentId(null);
       setWebcamActive(false);
       setAugmentDone(false);
       setShowModelSelect(false);
@@ -429,6 +552,31 @@ export function WallImageWorkspace() {
     setChalkBySegmentId((prev) => ({ ...prev, [segmentId]: value }));
   }
 
+  // Toggling the same card's "Choose color" again cancels the pick instead
+  // of restarting it; choosing a different card just moves the pick over.
+  function handleChooseColor(segmentId: string) {
+    setPickingColorSegmentId((prev) => (prev === segmentId ? null : segmentId));
+  }
+
+  // ImageCanvas's onPickColor -- fires once the user clicks the image while
+  // a pick is in progress.
+  function handlePickColor(color: string) {
+    if (!pickingColorSegmentId) return;
+    setColorBySegmentId((prev) => ({ ...prev, [pickingColorSegmentId]: color }));
+    setPickingColorSegmentId(null);
+  }
+
+  // Escape backs out of a color pick without sampling anything, same as it
+  // closes a ModelSelect dropdown.
+  useEffect(() => {
+    if (!pickingColorSegmentId) return;
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setPickingColorSegmentId(null);
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [pickingColorSegmentId]);
+
   async function handleRemoveSegment(segmentId: string) {
     setSegments((prev) => prev.filter((segment) => segment.segmentId !== segmentId));
     setChalkBySegmentId((prev) => {
@@ -436,6 +584,12 @@ export function WallImageWorkspace() {
       delete next[segmentId];
       return next;
     });
+    setColorBySegmentId((prev) => {
+      const next = { ...prev };
+      delete next[segmentId];
+      return next;
+    });
+    setPickingColorSegmentId((prev) => (prev === segmentId ? null : prev));
     try {
       await apiClient.deleteWorkingSegment(segmentId);
     } catch {
@@ -601,11 +755,37 @@ export function WallImageWorkspace() {
                 }}
               />
             </div>
-            <div
-              className={`${styles.lighting} ${styles.toolbarItem} ${styles.toolbarItemLighting} ${toolbarEntered ? styles.toolbarItemIn : ""}`}
-            >
-              <LabeledSlider label="Lighting" value={lighting} onChange={setLighting} />
-            </div>
+            {imageId && (
+              <div
+                className={`${styles.toolbarActions} ${styles.toolbarItem} ${styles.toolbarItemActions} ${actionsEntered ? styles.toolbarItemIn : ""}`}
+              >
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={pendingPoints.length === 0 || detecting}
+                  onClick={handleDetectSegments}
+                >
+                  {detecting
+                    ? "Detecting…"
+                    : `Detect Holds${pendingPoints.length > 0 ? ` (${pendingPoints.length})` : ""}`}
+                </Button>
+                <Button
+                  type="button"
+                  variant="primary"
+                  disabled={loading}
+                  onClick={augmentDone ? handleBackToAugment : handleFinishAugment}
+                >
+                  {augmentDone ? "Back to Augment" : "Finish Augment"}
+                </Button>
+              </div>
+            )}
+            {imageId && (
+              <div
+                className={`${styles.lighting} ${styles.toolbarItem} ${styles.toolbarItemLighting} ${actionsEntered ? styles.toolbarItemIn : ""}`}
+              >
+                <LabeledSlider label="Lighting" value={lighting} onChange={setLighting} />
+              </div>
+            )}
           </div>
         </div>
 
@@ -624,6 +804,16 @@ export function WallImageWorkspace() {
             </button>
           </div>
         )}
+
+        {showBackToAugment && (
+          <div
+            className={`${styles.backToAugmentSlot} ${backToAugmentEntered ? styles.backToAugmentSlotIn : ""}`}
+          >
+            <Button type="button" variant="primary" onClick={handleBackToAugment}>
+              Back to Augment
+            </Button>
+          </div>
+        )}
       </div>
 
       {error && (
@@ -633,13 +823,16 @@ export function WallImageWorkspace() {
         </p>
       )}
 
-      <div className={styles.mainGrid}>
+      <div className={`${styles.mainGrid} ${showFullWidthCanvas ? styles.mainGridFull : ""}`}>
         <div className={styles.canvasColumn}>
           <ImageCanvas
             imageSrc={imageSrc}
             lightingPercent={lighting}
             segments={segments}
             chalkBySegmentId={chalkBySegmentId}
+            colorBySegmentId={colorBySegmentId}
+            pickingColor={pickingColorSegmentId !== null}
+            onPickColor={handlePickColor}
             pendingPoints={pendingPoints}
             webcamActive={webcamActive}
             loading={loading || detecting}
@@ -649,7 +842,7 @@ export function WallImageWorkspace() {
               setWebcamActive(false);
             }}
             onAddSegmentPoint={handleAddSegmentPoint}
-            interactive={!pastRecognition}
+            interactive={!pastRecognition && !augmentDone}
             showHoldOutline={!pastRecognition}
             overlay={
               recognitionDone &&
@@ -686,31 +879,20 @@ export function WallImageWorkspace() {
               )
             }
           />
-          <Button
-            type="button"
-            variant="secondary"
-            disabled={!imageId || pendingPoints.length === 0 || detecting}
-            onClick={handleDetectSegments}
-          >
-            {detecting ? "Detecting…" : `Detect Holds${pendingPoints.length > 0 ? ` (${pendingPoints.length})` : ""}`}
-          </Button>
-          <Button
-            type="button"
-            variant="primary"
-            disabled={!imageId || loading}
-            onClick={augmentDone ? handleBackToAugment : handleFinishAugment}
-          >
-            {augmentDone ? "Back to Augment" : "Finish Augment"}
-          </Button>
         </div>
 
-        <div className={styles.segmentSlot}>
+        <div
+          className={`${styles.segmentSlot} ${showFullWidthCanvas ? styles.segmentSlotHidden : ""}`}
+        >
           <SegmentPanel
             hasImage={!!imageId}
             segments={segments}
             chalkBySegmentId={chalkBySegmentId}
             onChalkChange={handleChalkChange}
             onRemove={handleRemoveSegment}
+            colorBySegmentId={colorBySegmentId}
+            pickingSegmentId={pickingColorSegmentId}
+            onChooseColor={handleChooseColor}
             closing={augmentDone}
           />
 
@@ -721,13 +903,13 @@ export function WallImageWorkspace() {
               <div className={styles.modelSelectRow} ref={modelSelectRowRef}>
                 <ModelSelect
                   label="hold model"
-                  options={HOLD_MODEL_OPTIONS}
+                  options={holdModelOptions}
                   value={holdModel}
                   onChange={setHoldModel}
                 />
                 <ModelSelect
                   label="route model"
-                  options={ROUTE_MODEL_OPTIONS}
+                  options={routeModelOptions}
                   value={routeModel}
                   onChange={setRouteModel}
                 />
