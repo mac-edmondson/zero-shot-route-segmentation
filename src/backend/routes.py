@@ -1,62 +1,103 @@
 from __future__ import annotations
 
-import io
 import json
-import uuid
+from typing import Any
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
-from PIL import Image as PILImage
-
-from ..pipeline.hold_detector.hold_detector_factory import hold_detector_factory
-from ..pipeline.route_discriminator.route_discriminator_factory import (
-    route_discriminator_factory,
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
 )
-from ..pipeline.route_discriminator_pipeline import RouteDiscriminatorPipeline
+from starlette.datastructures import UploadFile as StarletteUploadFile
+
+try:
+    from ..pipeline.hold_detector.hold_detector_factory import (
+        AVAILABLE_HOLD_DETECTORS,
+        UnknownHoldDetectorError,
+    )
+    from ..pipeline.route_discriminator.route_discriminator_factory import (
+        AVAILABLE_ROUTE_DISCRIMINATORS,
+        UnknownRouteDiscriminatorError,
+    )
+except ImportError:  # Support `PYTHONPATH=src` development imports.
+    from pipeline.hold_detector.hold_detector_factory import (
+        AVAILABLE_HOLD_DETECTORS,
+        UnknownHoldDetectorError,
+    )
+    from pipeline.route_discriminator.route_discriminator_factory import (
+        AVAILABLE_ROUTE_DISCRIMINATORS,
+        UnknownRouteDiscriminatorError,
+    )
+from .dependencies import get_session
 from .schemas import (
     AugmentWorkingImageRequest,
+    AvailableConfigsResponse,
     Coordinate,
     DetectSegmentsResponse,
-    HoldResult,
     InferWorkingResponse,
-    Polygon,
-    RouteResult,
-    SegmentResult,
+    PipelineConfig,
+    SegmentAugmentation,
+    SegmentRequest,
+    SegmentStatusResponse,
+    WorkingImageResponse,
 )
-from .services.mock_segmentation import mock_segment_point
+from .services.dashboard import (
+    augment_image,
+    decode_data_url,
+    decode_image,
+    detect_segments,
+    image_data_url,
+    infer,
+    model_error,
+    new_image_id,
+)
+from .session_store import JobState, SessionState
 
 router = APIRouter()
 
 
-@router.post("/image/working/segments", response_model=DetectSegmentsResponse)
-async def detect_segments(
-    image: UploadFile = File(...),
-    all_points_x: str = Form(...),
-    all_points_y: str = Form(...),
-) -> DetectSegmentsResponse:
-    """
-    Batched hold-segmentation endpoint.
+def _conflict(message: str) -> HTTPException:
+    return HTTPException(status_code=409, detail=message)
 
-    Takes the working image plus every clicked point in one request
-    (VIA-style `all_points_x`/`all_points_y` lists -- JSON-encoded as form
-    fields since they travel alongside a file in multipart/form-data) and
-    loops each point through the segmentation model (currently
-    `mock_segmentation`, a stand-in for SAM3), returning one polygon per
-    point.
 
-    Stateless by design: the image is never persisted or looked up by id --
-    it's sent whole with every request and only read into memory for the
-    duration of this call (see progress.md / dashboard-backend discussion for
-    why: no backend-side image storage was wanted for this pass).
-    """
+def _set_working_image(session: SessionState, image: Any) -> None:
+    with session.lock:
+        session.working_image = image
+        session.working_image_id = new_image_id()
+        session.generation += 1
+        session.segments.clear()
+        session.segment_job = JobState()
+        session.image_job = JobState()
+        session.inference_job = JobState()
+        session.inference_result = None
+
+
+def _valid_config(hold_detector: str, route_classifier: str) -> bool:
+    return (
+        hold_detector in AVAILABLE_HOLD_DETECTORS
+        and route_classifier in AVAILABLE_ROUTE_DISCRIMINATORS
+    )
+
+
+def _compat_config(value: str | None, available: list[str], fallback: str) -> str:
+    return value if value in available else fallback
+
+
+def _parse_legacy_points(all_points_x: str, all_points_y: str) -> list[Coordinate]:
     try:
-        xs: list[float] = json.loads(all_points_x)
-        ys: list[float] = json.loads(all_points_y)
+        xs = json.loads(all_points_x)
+        ys = json.loads(all_points_y)
     except (json.JSONDecodeError, TypeError) as exc:
         raise HTTPException(
             status_code=422,
             detail="all_points_x/all_points_y must be JSON number arrays",
         ) from exc
-
     if not isinstance(xs, list) or not isinstance(ys, list) or len(xs) != len(ys):
         raise HTTPException(
             status_code=422,
@@ -64,127 +105,320 @@ async def detect_segments(
         )
     if not xs:
         raise HTTPException(status_code=422, detail="At least one point is required")
-
-    # Read (and discard) so the upload completes cleanly. Not decoded/used by
-    # the mock yet -- real SAM3 would decode these bytes per point below.
-    await image.read()
-
-    segments = [
-        SegmentResult(
-            segment_id=f"seg_{uuid.uuid4().hex[:12]}",
-            polygon=mock_segment_point(Coordinate(x=x, y=y)),
-        )
-        for x, y in zip(xs, ys)
-    ]
-    return DetectSegmentsResponse(segments=segments)
-
-
-@router.post("/image/working/augment", status_code=204)
-async def augment_working_image(body: AugmentWorkingImageRequest) -> None:
-    """
-    No-op for now: accepts the frontend's existing lighting/chalk
-    augmentation request (`Finish Augment`) so it stops 404ing, rather than
-    silently blocking the frontend's post-augment model-select reveal.
-
-    Doesn't actually bake anything into image bytes -- this call carries no
-    image (stateless backend, see the segments endpoint's docstring above),
-    and real chalk/lighting rendering is still unbuilt (progress.md's Next
-    Steps: "Build POST /image/working/augment ... so Lighting/Chalk actually
-    bake into the image").
-    """
-    return None
-
-
-@router.post("/pipeline/infer/working", response_model=InferWorkingResponse)
-async def infer_working_pipeline(
-    image: UploadFile = File(...),
-    hold_detector: str = Form("mock"),
-    route_discriminator: str = Form("mock"),
-    lighting_percent: float = Form(0.0),
-    segments: str = Form("[]"),
-) -> InferWorkingResponse:
-    """
-    Recognition: runs the full RouteDiscriminatorPipeline
-    (src/pipeline/route_discriminator_pipeline.py, composing a HoldDetector +
-    a RouteDiscriminator per docs/spec/pipeline/interfaces/route-discriminator-pipeline.md)
-    on the working image and returns the detected routes -- one list of
-    holds per route, per the REST spec
-    (docs/diagrams/spec_rest_api.drawio.svg: "routes: list of routes (which
-    is lists of holds)").
-
-    Takes both the augmentation state gathered by `Finish Augment`
-    (lighting_percent/segments) and the model selection made just before
-    `Recognition` is pressed, in one request -- this backend is stateless
-    (see /image/working/segments' docstring above) and never stores the
-    working image between calls, so there's nowhere else to combine the two;
-    the pipeline needs the image and both selections together to run at all.
-
-    hold_detector/route_discriminator currently always resolve to the mock
-    implementations (src/pipeline/*/mock_*.py) regardless of the string sent
-    -- SAM3 (needs torch/transformers/cv2, deliberately not installed in
-    this lightweight backend build) and the real per-method route
-    discriminators from the proposal (color-only/DINO/combined) aren't wired
-    in yet. lighting_percent/segments are accepted but not yet baked into
-    pixels, same caveat as POST /image/working/augment above.
-    """
     try:
-        json.loads(segments)
-    except json.JSONDecodeError as exc:
+        return [Coordinate(x=x, y=y) for x, y in zip(xs, ys, strict=True)]
+    except (TypeError, ValueError) as exc:
         raise HTTPException(
-            status_code=422, detail="segments must be a JSON array"
+            status_code=422, detail="coordinates must be normalized numbers"
         ) from exc
 
-    raw = await image.read()
+
+def _finish_segment_job(
+    session: SessionState,
+    generation: int,
+    coordinates: list[Coordinate],
+) -> None:
     try:
-        pil_image = PILImage.open(io.BytesIO(raw)).convert("RGB")
+        result = detect_segments(coordinates)
     except Exception as exc:
-        raise HTTPException(status_code=422, detail="Couldn't read image") from exc
+        with session.lock:
+            if generation == session.generation:
+                session.segment_job = JobState("failed", model_error(exc))
+        return
 
-    # TODO(@teammate): once hold_detector/route_discriminator support more
-    # than "mock", map hold_detector/route_discriminator (received above)
-    # into the factories' real keys instead of hardcoding "mock" here.
-    detector = hold_detector_factory("mock")
-    discriminator = route_discriminator_factory("mock")
-    pipeline = RouteDiscriminatorPipeline(detector, discriminator)
+    with session.lock:
+        if generation != session.generation:
+            return
+        session.segments.update({segment.segment_id: segment for segment in result})
+        session.segment_job = JobState()
 
-    routes = pipeline.get_routes([pil_image])[0]
-    width, height = pil_image.width, pil_image.height
 
-    return InferWorkingResponse(
-        routes=[
-            RouteResult(
-                route_id=route.route_id,
-                holds=[
-                    HoldResult(
-                        centroid=Coordinate(
-                            x=hold.centroid.x / width, y=hold.centroid.y / height
-                        ),
-                        polygon=Polygon(
-                            points=[
-                                Coordinate(x=p.x / width, y=p.y / height)
-                                for p in hold.polygon.points
-                            ]
-                        ),
-                    )
-                    for hold in route.holds
-                ],
+def _finish_augmentation_job(
+    session: SessionState,
+    generation: int,
+    request: AugmentWorkingImageRequest,
+) -> None:
+    try:
+        with session.lock:
+            image = (
+                session.working_image.copy()
+                if session.working_image is not None
+                else None
             )
-            for route in routes
-        ],
-        inference_metrics={
-            "hold_count": float(sum(len(route.holds) for route in routes)),
-            "route_count": float(len(routes)),
-        },
+            segments = list(session.segments.values())
+        if image is not None:
+            image = augment_image(image, request, segments)
+    except Exception as exc:
+        with session.lock:
+            if generation == session.generation:
+                session.image_job = JobState("failed", model_error(exc))
+        return
+
+    with session.lock:
+        if generation != session.generation:
+            return
+        if image is not None:
+            session.working_image = image
+        session.image_job = JobState()
+
+
+def _finish_inference_job(
+    session: SessionState,
+    generation: int,
+    image: Any,
+    hold_detector: str,
+    route_classifier: str,
+) -> None:
+    try:
+        result = infer(image, hold_detector, route_classifier)
+    except Exception as exc:
+        with session.lock:
+            if generation == session.generation:
+                session.inference_job = JobState("failed", model_error(exc))
+                session.inference_result = None
+        return
+
+    with session.lock:
+        if generation != session.generation:
+            return
+        session.inference_result = result
+        session.inference_job = JobState()
+
+
+async def _read_image_request(request: Request) -> Any:
+    content_type = request.headers.get("content-type", "")
+    if content_type.startswith("multipart/form-data"):
+        form = await request.form()
+        upload = form.get("image")
+        if not isinstance(upload, (UploadFile, StarletteUploadFile)):
+            raise HTTPException(status_code=422, detail="image file is required")
+        try:
+            return decode_image(await upload.read())
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    try:
+        payload = await request.json()
+        value = payload["image"]
+    except (ValueError, KeyError, TypeError) as exc:
+        raise HTTPException(
+            status_code=422, detail="request must contain an image"
+        ) from exc
+    if not isinstance(value, str):
+        raise HTTPException(status_code=422, detail="image must be a data URL")
+    try:
+        return decode_data_url(value)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/pipeline/available_configs", response_model=AvailableConfigsResponse)
+def available_configs() -> AvailableConfigsResponse:
+    return AvailableConfigsResponse(
+        hold_detector=AVAILABLE_HOLD_DETECTORS,
+        route_classifier=AVAILABLE_ROUTE_DISCRIMINATORS,
     )
 
 
+@router.get("/pipeline", response_model=PipelineConfig)
+def get_pipeline(session: SessionState = Depends(get_session)) -> PipelineConfig:
+    with session.lock:
+        return PipelineConfig(
+            hold_detector=session.hold_detector,
+            route_classifier=session.route_classifier,
+        )
+
+
+@router.put("/pipeline", response_model=PipelineConfig)
+def set_pipeline(
+    body: PipelineConfig,
+    session: SessionState = Depends(get_session),
+) -> PipelineConfig:
+    if not _valid_config(body.hold_detector, body.route_classifier):
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "hold_detector": AVAILABLE_HOLD_DETECTORS,
+                "route_classifier": AVAILABLE_ROUTE_DISCRIMINATORS,
+            },
+        )
+    with session.lock:
+        session.hold_detector = body.hold_detector
+        session.route_classifier = body.route_classifier
+    return body
+
+
+@router.put("/image/working", status_code=200)
+async def set_working_image(
+    request: Request,
+    session: SessionState = Depends(get_session),
+) -> None:
+    _set_working_image(session, await _read_image_request(request))
+
+
+@router.get("/image/working", response_model=WorkingImageResponse)
+def get_working_image(
+    session: SessionState = Depends(get_session),
+) -> WorkingImageResponse:
+    with session.lock:
+        return WorkingImageResponse(
+            status=session.image_job.status,
+            image=image_data_url(session.working_image)
+            if session.working_image is not None
+            else None,
+            image_id=session.working_image_id,
+            error=session.image_job.error,
+        )
+
+
+@router.post("/image/working/segment", status_code=202)
+def start_segmentation(
+    body: SegmentRequest,
+    background_tasks: BackgroundTasks,
+    session: SessionState = Depends(get_session),
+) -> Response:
+    with session.lock:
+        if session.segment_job.status == "processing":
+            raise _conflict("segmentation is already processing")
+        if session.working_image is None:
+            raise _conflict("set a working image before segmenting")
+        generation = session.generation
+        session.segment_job = JobState("processing")
+    background_tasks.add_task(
+        _finish_segment_job, session, generation, body.coordinates
+    )
+    return Response(status_code=202)
+
+
+@router.get("/image/working/segment", response_model=SegmentStatusResponse)
+def get_segmentation(
+    session: SessionState = Depends(get_session),
+) -> SegmentStatusResponse:
+    with session.lock:
+        return SegmentStatusResponse(
+            status=session.segment_job.status,
+            segments=list(session.segments.values()),
+            error=session.segment_job.error,
+        )
+
+
 @router.delete("/image/working/segment/{segment_id}", status_code=204)
-async def delete_segment(segment_id: str) -> None:
-    """
-    No-op: nothing is stored server-side to delete (see module docstring
-    above). Kept as a real endpoint so the frontend's existing
-    deleteWorkingSegment call has somewhere to land without special-casing,
-    and so this matches the DELETE /image/working/segment/{id} shape already
-    sketched in docs/diagrams/spec_rest_api.drawio.svg.
-    """
-    return None
+def delete_segment(
+    segment_id: str, session: SessionState = Depends(get_session)
+) -> None:
+    with session.lock:
+        session.segments.pop(segment_id, None)
+
+
+@router.post("/image/working/augment", status_code=202)
+def start_augmentation(
+    body: AugmentWorkingImageRequest | list[SegmentAugmentation],
+    background_tasks: BackgroundTasks,
+    session: SessionState = Depends(get_session),
+) -> Response:
+    if isinstance(body, list):
+        body = AugmentWorkingImageRequest(segments=body)
+    with session.lock:
+        if session.image_job.status == "processing":
+            raise _conflict("augmentation is already processing")
+        generation = session.generation
+        session.image_job = JobState("processing")
+    background_tasks.add_task(_finish_augmentation_job, session, generation, body)
+    return Response(status_code=202)
+
+
+@router.get("/pipeline/infer/working", response_model=InferWorkingResponse)
+def get_inference(session: SessionState = Depends(get_session)) -> InferWorkingResponse:
+    with session.lock:
+        if session.inference_job.status == "failed":
+            return InferWorkingResponse(
+                status="failed", error=session.inference_job.error
+            )
+        if session.inference_job.status == "processing":
+            return InferWorkingResponse(status="processing")
+        return session.inference_result or InferWorkingResponse()
+
+
+@router.post("/pipeline/infer/working", response_model=None)
+async def start_inference(
+    background_tasks: BackgroundTasks,
+    session: SessionState = Depends(get_session),
+    image: UploadFile | None = File(None),
+    hold_detector: str | None = Form(None),
+    route_discriminator: str | None = Form(None),
+    route_classifier: str | None = Form(None),
+    lighting_percent: float | None = Form(None),
+    segments: str | None = Form(None),
+) -> Response | InferWorkingResponse:
+    """Start spec-compliant inference, with the old multipart call kept working."""
+    if image is not None:
+        try:
+            uploaded = decode_image(await image.read())
+            with session.lock:
+                stored_segments = list(session.segments.values())
+                session.working_image = uploaded
+                session.working_image_id = session.working_image_id or new_image_id()
+                session.generation += 1
+                session.image_job = JobState()
+                session.inference_job = JobState()
+                session.inference_result = None
+            if lighting_percent and not stored_segments:
+                uploaded = augment_image(
+                    uploaded,
+                    AugmentWorkingImageRequest(lighting_percent=lighting_percent),
+                    (),
+                )
+            selected_hold = _compat_config(
+                hold_detector, AVAILABLE_HOLD_DETECTORS, "mock"
+            )
+            selected_route = _compat_config(
+                route_classifier or route_discriminator,
+                AVAILABLE_ROUTE_DISCRIMINATORS,
+                "mock",
+            )
+            return infer(uploaded, selected_hold, selected_route)
+        except (UnknownHoldDetectorError, UnknownRouteDiscriminatorError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except (ValueError, KeyError, json.JSONDecodeError) as exc:
+            raise HTTPException(status_code=422, detail=model_error(exc)) from exc
+
+    with session.lock:
+        if session.inference_job.status == "processing":
+            raise _conflict("inference is already processing")
+        if session.working_image is None:
+            raise _conflict("set a working image before inference")
+        generation = session.generation
+        working_image = session.working_image.copy()
+        selected_hold = session.hold_detector
+        selected_route = session.route_classifier
+        session.inference_job = JobState("processing")
+    background_tasks.add_task(
+        _finish_inference_job,
+        session,
+        generation,
+        working_image,
+        selected_hold,
+        selected_route,
+    )
+    return Response(status_code=202)
+
+
+# Compatibility route for the previous stateless frontend client.
+@router.post("/image/working/segments", response_model=DetectSegmentsResponse)
+async def detect_segments_legacy(
+    image: UploadFile = File(...),
+    all_points_x: str = Form(...),
+    all_points_y: str = Form(...),
+    session: SessionState = Depends(get_session),
+) -> DetectSegmentsResponse:
+    coordinates = _parse_legacy_points(all_points_x, all_points_y)
+    try:
+        uploaded = decode_image(await image.read())
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    _set_working_image(session, uploaded)
+    result = detect_segments(coordinates)
+    with session.lock:
+        session.segments.update({segment.segment_id: segment for segment in result})
+        session.segment_job = JobState()
+    return DetectSegmentsResponse(segments=result)

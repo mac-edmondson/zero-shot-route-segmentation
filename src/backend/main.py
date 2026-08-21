@@ -2,12 +2,10 @@ from __future__ import annotations
 
 import os
 
-from dotenv import load_dotenv
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
-from fastapi import FastAPI  # noqa: E402
-from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
-
-from .routes import router  # noqa: E402
+from .routes import router
 
 app = FastAPI(title="ROUTNet Dashboard Backend")
 

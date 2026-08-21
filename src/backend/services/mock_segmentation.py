@@ -37,14 +37,26 @@ def mock_segment_point(point: Coordinate) -> Polygon:
     base_radius = random.uniform(_MIN_RADIUS, _MAX_RADIUS)
     points = [
         Coordinate(
-            x=point.x
-            + base_radius
-            * random.uniform(1 - _VERTEX_JITTER, 1 + _VERTEX_JITTER)
-            * math.cos(2 * math.pi * i / sides),
-            y=point.y
-            + base_radius
-            * random.uniform(1 - _VERTEX_JITTER, 1 + _VERTEX_JITTER)
-            * math.sin(2 * math.pi * i / sides),
+            x=max(
+                0.0,
+                min(
+                    1.0,
+                    point.x
+                    + base_radius
+                    * random.uniform(1 - _VERTEX_JITTER, 1 + _VERTEX_JITTER)
+                    * math.cos(2 * math.pi * i / sides),
+                ),
+            ),
+            y=max(
+                0.0,
+                min(
+                    1.0,
+                    point.y
+                    + base_radius
+                    * random.uniform(1 - _VERTEX_JITTER, 1 + _VERTEX_JITTER)
+                    * math.sin(2 * math.pi * i / sides),
+                ),
+            ),
         )
         for i in range(sides)
     ]

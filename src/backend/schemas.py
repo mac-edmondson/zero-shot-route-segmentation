@@ -1,18 +1,10 @@
-"""
-Pydantic models for the Dashboard Backend API
-(docs/spec/pipeline/interfaces/dashboard-backend.md).
-
-Coordinates are normalized to [0, 1] of the image, matching the frontend's
-existing convention (see src/frontend/components/image-canvas/ImageCanvas.tsx)
--- this keeps the wire contract stable regardless of the actual image's pixel
-dimensions. A real SAM3 integration would convert to/from pixel space
-internally using the image bytes it already receives; callers on either side
-never need to know about that conversion.
-"""
+"""Wire models for the dashboard backend."""
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic.alias_generators import to_camel
 
 
@@ -20,14 +12,19 @@ class Coordinate(BaseModel):
     x: float
     y: float
 
+    @field_validator("x", "y")
+    @classmethod
+    def normalized(cls, value: float) -> float:
+        if not 0 <= value <= 1:
+            raise ValueError("coordinates must be normalized to [0, 1]")
+        return value
+
 
 class Polygon(BaseModel):
-    points: list[Coordinate]
+    points: list[Coordinate] = Field(min_length=3)
 
 
 class SegmentResult(BaseModel):
-    """One detected hold -- the polygon returned for one clicked point."""
-
     segment_id: str
     polygon: Polygon
 
@@ -36,38 +33,44 @@ class DetectSegmentsResponse(BaseModel):
     segments: list[SegmentResult]
 
 
-class SegmentAugmentation(BaseModel):
-    """One segment's chalk augmentation, as sent by `POST /image/working/augment`
-    (src/frontend/lib/api/types.ts: SegmentAugmentation). JSON body, not a
-    form -- unlike /image/working/segments, so camelCase from the frontend is
-    accepted directly via the alias generator rather than needing a
-    JSON-encoded form field."""
+class SegmentRequest(BaseModel):
+    coordinates: list[Coordinate] = Field(min_length=1)
 
+
+class SegmentStatusResponse(BaseModel):
+    status: Literal["processing", "completed", "failed"]
+    segments: list[SegmentResult] = Field(default_factory=list)
+    error: str | None = None
+
+class RGBColor(BaseModel):
+    r: int = Field(ge=0, le=255)
+    g: int = Field(ge=0, le=255)
+    b: int = Field(ge=0, le=255)
+
+
+class SegmentAugmentation(BaseModel):
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
     segment_id: str
-    chalk_percent: float
+    chalk_percent: float = Field(ge=0, le=100)
+    color: RGBColor | None = None
 
 
 class AugmentWorkingImageRequest(BaseModel):
-    """Body of `POST /image/working/augment`
-    (src/frontend/lib/api/types.ts: AugmentWorkingImageRequest). No image
-    bytes -- the backend is stateless and this call doesn't carry the working
-    image, so there's nothing here to bake chalk/lighting into yet."""
-
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
-    lighting_percent: float
-    segments: list[SegmentAugmentation]
+    lighting_percent: float = Field(ge=-100, le=100, default=0)
+    segments: list[SegmentAugmentation] = Field(default_factory=list)
+
+
+class WorkingImageResponse(BaseModel):
+    status: Literal["processing", "completed", "failed"]
+    image: str | None = None
+    image_id: str | None = None
+    error: str | None = None
 
 
 class HoldResult(BaseModel):
-    """One hold within a detected route, returned by
-    `POST /pipeline/infer/working` -- shape matches SegmentResult's polygon
-    convention (normalized [0, 1] coordinates), plus the centroid the shared
-    pipeline data model (`src/pipeline/interfaces/data_models.py::Hold`)
-    already computes."""
-
     centroid: Coordinate
     polygon: Polygon
 
@@ -78,10 +81,19 @@ class RouteResult(BaseModel):
 
 
 class InferWorkingResponse(BaseModel):
-    """Response of `POST /pipeline/infer/working`
-    (src/frontend/lib/api/types.ts: InferenceResult) -- one route list for
-    the working image, each route a list of holds ("list of routes (which is
-    lists of holds)" per docs/diagrams/spec_rest_api.drawio.svg)."""
+    status: Literal["processing", "completed", "failed"] = "completed"
+    routes: list[RouteResult] = Field(default_factory=list)
+    inference_metrics: dict[str, float] = Field(default_factory=dict)
+    error: str | None = None
 
-    routes: list[RouteResult]
-    inference_metrics: dict[str, float] = {}
+
+class PipelineConfig(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    hold_detector: str
+    route_classifier: str
+
+
+class AvailableConfigsResponse(BaseModel):
+    hold_detector: list[str]
+    route_classifier: list[str]

@@ -20,6 +20,7 @@ export async function request<T>(
       method,
       headers: body && !isFormData ? { "Content-Type": "application/json" } : undefined,
       body: isFormData ? (body as FormData) : body ? JSON.stringify(body) : undefined,
+      credentials: "include",
       signal,
     });
   } catch {
@@ -34,7 +35,7 @@ export async function request<T>(
     );
   }
 
-  if (response.status === 204) {
+  if (response.status === 202 || response.status === 204) {
     return undefined as T;
   }
 
@@ -49,7 +50,10 @@ export async function requestBlob(
 ): Promise<Blob> {
   let response: Response;
   try {
-    response = await fetch(`${API_BASE_URL}${path}`, { signal });
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      signal,
+      credentials: "include",
+    });
   } catch {
     throw new ApiError(`Failed to reach backend at ${API_BASE_URL}${path}`);
   }

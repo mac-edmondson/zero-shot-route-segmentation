@@ -13,3 +13,5 @@ services:
   backend:
     build:
       target: base
+    environment:
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}

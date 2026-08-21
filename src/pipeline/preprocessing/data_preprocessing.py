@@ -8,8 +8,8 @@ from enum import Enum
 from types import MappingProxyType
 from typing import Protocol
 
-from .augmentation_suite import AugmentationPlan
-from .data_preprocessing import ImageRecord
+from ..interfaces.augmentation import AugmentationPlan
+from ..interfaces.data_models import ImageRecord
 
 
 class MaterializationMode(str, Enum):
