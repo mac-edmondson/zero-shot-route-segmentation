@@ -8,18 +8,6 @@ from typing import Protocol
 from ..interfaces.data_models import Hold, Image
 
 
-class HoldDetectionError(RuntimeError):
-    """Base class for automatic hold-detection failures."""
-
-
-class InvalidImageError(HoldDetectionError):
-    """Raised when a batch has an invalid image."""
-
-
-class BatchAlignmentError(HoldDetectionError):
-    """Raised when image and detection batches differ in length."""
-
-
 class InvalidHoldDetectorConfigError(ValueError):
     """Raised when there is an invalid configuration within a hold detector"""
 

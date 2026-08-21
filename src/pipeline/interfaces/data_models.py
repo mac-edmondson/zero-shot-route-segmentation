@@ -20,13 +20,12 @@ class Coordinate:
     y: int
 
     def __post_init__(self) -> None:
+        if type(self.x) is not int or type(self.y) is not int:
+            raise TypeError("Coordinate values must be integers.")
         if self.x < 0 or self.y < 0:
             raise ValueError(
                 f"x or y was less than 0. This doesn't make any since for a coordinate. {self.x=} {self.y=}"
             )
-
-        object.__setattr__(self, "x", int(self.x))
-        object.__setattr__(self, "y", int(self.y))
 
 
 @dataclass(frozen=True)
@@ -35,12 +34,12 @@ class Polygon:
 
     def __post_init__(self) -> None:
         points = tuple(self.points)
+        if any(not isinstance(p, Coordinate) for p in points):
+            raise TypeError("A polygon should be made-up of Coordinates!")
+
         distinct_points = {(p.x, p.y) for p in points}
         if len(distinct_points) < 3:
             raise ValueError("A polygon needs at least three distinct points.")
-
-        if any(not isinstance(p, Coordinate) for p in points):
-            raise TypeError("A polygon should be made-up of Coordinates!")
 
         object.__setattr__(self, "points", points)
 
@@ -52,10 +51,10 @@ class RGBColor:
     b: int
 
     def __post_init__(self) -> None:
-
-        if not any(isinstance(v, int) for v in (self.r, self.g, self.b)):
+        values = (self.r, self.g, self.b)
+        if any(type(value) is not int for value in values):
             raise TypeError("RGB Values should be made up of integers!")
-        if any(0 <= v <= 255 for v in (self.r, self.g, self.b)):
+        if any(not 0 <= value <= 255 for value in values):
             raise ValueError("RGB values must be integers in [0, 255].")
 
 
@@ -93,10 +92,10 @@ class Hold:
         )
 
     def __post_init__(self) -> None:
-        if not isinstance(self.centroid, Coordinate) or not isinstance(
-            self.polygon, Polygon
-        ):
+        if not isinstance(self.polygon, Polygon):
             raise TypeError("Hold values must use shared data models.")
+        if not isinstance(self.attributes, Mapping):
+            raise TypeError("Hold attributes must be a mapping.")
         object.__setattr__(self, "attributes", MappingProxyType(dict(self.attributes)))
 
     def __hash__(self) -> int:

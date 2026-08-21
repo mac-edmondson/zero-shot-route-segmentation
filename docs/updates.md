@@ -15,3 +15,7 @@
 An empty or omitted exemplar list selects text-only inference. Each supplied exemplar is run independently; scored masks are merged and deduplicated with confidence-ordered mask-IoU NMS. The detector removes only overlaps at or above `nms_iou` (default 0.85), preserving nearby distinct holds. Exemplar masks must be non-empty binary arrays aligned with their exemplar images.
 
 Retained evaluation inputs and completed A40 findings are documented in [evaluation.md](evaluation.md).
+
+## Route classifiers
+
+Color-only and pretrained TripletNet route classifiers are available through `RouteClassifierFactory` as `color_only_classifier` and `triplet_route_classifier`.

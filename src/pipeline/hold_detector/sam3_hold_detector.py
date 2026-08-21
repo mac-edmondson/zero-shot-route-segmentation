@@ -10,15 +10,14 @@ from typing import Any, TypeAlias
 import cv2
 import numpy as np
 import torch
-from PIL import Image, ImageDraw
+from PIL import Image
 from transformers import Sam3VideoModel, Sam3VideoProcessor
 
 from ..interfaces.data_models import Coordinate, Hold, Polygon
+from ..interfaces.errors import InvalidImageError
 from .hold_detector import (
     HoldDetector,
-    BatchAlignmentError,
     InvalidHoldDetectorConfigError,
-    InvalidImageError,
 )
 
 Exemplar: TypeAlias = tuple[Image.Image, np.ndarray]
@@ -335,23 +334,14 @@ class SAMHoldDetector(HoldDetector, SAM3HoldWrapper):
             if not contours:
                 continue
             contour = max(contours, key=cv2.contourArea)
-            moments = cv2.moments(contour)
-            if moments["m00"] == 0:
-                continue
             try:
                 polygon = Polygon(
-                    tuple(
-                        Coordinate(float(x), float(y))
-                        for x, y in contour.reshape(-1, 2)
-                    )
+                    tuple(Coordinate(int(x), int(y)) for x, y in contour.reshape(-1, 2))
                 )
             except ValueError:
                 continue
             holds.append(
                 Hold(
-                    Coordinate(
-                        moments["m10"] / moments["m00"], moments["m01"] / moments["m00"]
-                    ),
                     polygon,
                     {"mask": np.asarray(mask, dtype=bool).copy(), "mode": mode},
                 )

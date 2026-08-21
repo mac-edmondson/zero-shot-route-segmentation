@@ -7,8 +7,8 @@ from typing import Protocol
 
 from PIL import ImageDraw
 
-from ..hold_detector.hold_detector import BatchAlignmentError
 from ..interfaces.data_models import Hold, Image, Route
+from ..interfaces.errors import BatchAlignmentError
 
 
 class UnknownRouteDiscriminatorError(ValueError): ...
