@@ -152,6 +152,30 @@
   font-weight: 600;
 }
 
+/* Sits right after the two chips -- accent-colored (not a neutral chip
+   itself) so it reads as the one actionable thing in an otherwise
+   read-only row. handleChangeModel plays the lock/slide in reverse. */
+.changeModelButton {
+  margin-left: 0.25rem;
+  padding: 0.4rem 0.85rem;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--accent-text);
+  background: var(--accent-soft);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) linear,
+    border-color var(--dur-fast) linear;
+}
+
+.changeModelButton:hover {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  border-color: var(--accent);
+}
+
 .error {
   flex-shrink: 0;
   display: flex;

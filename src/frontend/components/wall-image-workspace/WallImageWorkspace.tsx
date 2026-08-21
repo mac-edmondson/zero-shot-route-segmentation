@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties } from "react";
+import type { CSSProperties, RefObject } from "react";
 import { apiClient } from "@/lib/api";
 import type { Coordinate, Hold, InferenceResult, Segment } from "@/lib/api";
 import { AppHeader } from "@/components/header/AppHeader";
@@ -60,6 +60,56 @@ function fileToDataUrl(file: File | Blob): Promise<string> {
   });
 }
 
+/**
+ * FLIP animation (First/Last/Invert/Play) -- used twice below, once for
+ * each direction of the model-select <-> locked-chips slide, hence
+ * factored out rather than inlined. `el` mounts directly in its real,
+ * final position; this offsets it (via `transform`, before paint, hence
+ * useLayoutEffect) by the delta from `fromRectRef`'s last-measured rect,
+ * so the first painted frame still looks like it's over there, then clears
+ * the offset with a transition on the next frame (double-rAF, this
+ * codebase's usual entrance-animation trick) -- which is what reads as
+ * "sliding" from the old spot to the new one. Only ever animates
+ * `transform` -- cheap, GPU-composited, same lesson as the route-holds
+ * overlay's earlier flicker fix. A null `fromRectRef.current` (e.g. the
+ * model-select row's very first appearance, which isn't a slide from
+ * anywhere) makes this a no-op, leaving whatever other entrance transition
+ * the element already has to run on its own.
+ */
+function useFlipSlide(
+  active: boolean,
+  elRef: RefObject<HTMLElement | null>,
+  fromRectRef: RefObject<DOMRect | null>,
+  durationMs: number,
+) {
+  useLayoutEffect(() => {
+    if (!active) return;
+    const el = elRef.current;
+    const fromRect = fromRectRef.current;
+    if (!el || !fromRect) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+    const toRect = el.getBoundingClientRect();
+    const dx = fromRect.left - toRect.left;
+    const dy = fromRect.top - toRect.top;
+
+    el.style.transition = "none";
+    el.style.transform = `translate(${dx}px, ${dy}px)`;
+
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        el.style.transition = `transform ${durationMs}ms var(--ease)`;
+        el.style.transform = "translate(0, 0)";
+      });
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+  }, [active, elRef, fromRectRef, durationMs]);
+}
+
 function createLocalImageId(): string {
   return typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
@@ -110,19 +160,27 @@ export function WallImageWorkspace() {
   const [recognitionResult, setRecognitionResult] = useState<InferenceResult | null>(null);
   const [recognitionDone, setRecognitionDone] = useState(false);
   const [routesPanelEntered, setRoutesPanelEntered] = useState(false);
+  // Distinct from recognitionDone: this one stays true through
+  // handleChangeModel (which flips recognitionDone back to false to hide
+  // the routes panel and let the models be re-picked) -- the image itself
+  // should stay in its clean, non-interactive recognition look while
+  // re-picking models, not revert to click-to-add-point editing just
+  // because the routes panel is temporarily hidden. Only a real "Back to
+  // Augment" clears it.
+  const [pastRecognition, setPastRecognition] = useState(false);
 
   // Locked-model slide: once Recognition succeeds, the two chosen models
   // stop being editable and slide from the model-select row (right of the
-  // image) up into the toolbar's own reserved spot (above the image,
-  // below the header) -- see the FLIP-technique useLayoutEffect below.
-  // modelSelectRowRef is the "from" element (measured just before it
-  // starts fading out); lockedModelsRef is the "to" element (its real,
-  // laid-out position is the destination -- the slide is done by offsetting
-  // it with a transform and animating that back to none, not by moving it
-  // between containers).
+  // image) up into the toolbar's own reserved spot (above the image, below
+  // the header) -- see useFlipSlide above. "Change model" (handleChangeModel)
+  // plays the same slide in reverse. modelSelectRowRef/lockedModelsRef are
+  // each one direction's "to" element (mounted in its own real, final
+  // position); modelSlideFromRectRef/modelSlideBackFromRectRef hold the
+  // *other* element's last-measured rect, i.e. where each slide starts from.
   const modelSelectRowRef = useRef<HTMLDivElement>(null);
   const lockedModelsRef = useRef<HTMLDivElement>(null);
   const modelSlideFromRectRef = useRef<DOMRect | null>(null);
+  const modelSlideBackFromRectRef = useRef<DOMRect | null>(null);
   const [showLockedModels, setShowLockedModels] = useState(false);
 
   // Which route's holds are currently drawn on the image. selectedRouteId
@@ -187,46 +245,14 @@ export function WallImageWorkspace() {
     };
   }, [recognitionDone]);
 
-  // The slide itself -- a FLIP animation (First/Last/Invert/Play), not a
-  // move between DOM parents: lockedModelsRef is mounted directly in its
-  // real, final position (the toolbar's reserved spot), then immediately
-  // (before paint, hence useLayoutEffect) offset with `transform:
-  // translate()` by the delta from where the model-select row used to be,
-  // so the first frame painted still looks like it's over there. The next
-  // frame (double-rAF, this codebase's usual entrance-animation trick)
-  // clears that offset with a transition, which is what actually reads as
-  // "sliding" from the old spot to the new one. Only ever animates
-  // `transform` -- cheap, GPU-composited, same lesson as the route-holds
-  // overlay's earlier flicker fix.
-  useLayoutEffect(() => {
-    if (!showLockedModels) return;
-    const el = lockedModelsRef.current;
-    const fromRect = modelSlideFromRectRef.current;
-    if (!el || !fromRect) return;
-
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      return;
-    }
-
-    const toRect = el.getBoundingClientRect();
-    const dx = fromRect.left - toRect.left;
-    const dy = fromRect.top - toRect.top;
-
-    el.style.transition = "none";
-    el.style.transform = `translate(${dx}px, ${dy}px)`;
-
-    let raf2 = 0;
-    const raf1 = requestAnimationFrame(() => {
-      raf2 = requestAnimationFrame(() => {
-        el.style.transition = `transform ${MODEL_SELECT_LEAVE_MS}ms var(--ease)`;
-        el.style.transform = "translate(0, 0)";
-      });
-    });
-    return () => {
-      cancelAnimationFrame(raf1);
-      cancelAnimationFrame(raf2);
-    };
-  }, [showLockedModels]);
+  // Forward slide (model-select row -> locked chips, on Recognition) and
+  // reverse slide (locked chips -> model-select row, on "Change model") --
+  // see useFlipSlide above. The reverse one is a no-op on the model-select
+  // row's very first appearance (modelSlideBackFromRectRef.current is only
+  // ever set by handleChangeModel below), so its own ordinary rise/fade
+  // entrance (the effect above this one) is untouched for that case.
+  useFlipSlide(showLockedModels, lockedModelsRef, modelSlideFromRectRef, MODEL_SELECT_LEAVE_MS);
+  useFlipSlide(showModelSelect, modelSelectRowRef, modelSlideBackFromRectRef, MODEL_SELECT_LEAVE_MS);
 
   // Appears only once BOTH dropdowns have a pick -- unlike the entrance
   // timing above, this one can't be "either", because the Recognition call
@@ -345,8 +371,10 @@ export function WallImageWorkspace() {
       setRouteModel(null);
       setRecognitionResult(null);
       setRecognitionDone(false);
+      setPastRecognition(false);
       setRoutesPanelEntered(false);
       setShowLockedModels(false);
+      modelSlideBackFromRectRef.current = null;
       setSelectedRouteId(null);
       setRouteHighlightPhase("idle");
       setQueuedRouteId(null);
@@ -462,10 +490,11 @@ export function WallImageWorkspace() {
         routeClassifier: routeModel,
       });
       setRecognitionResult(result);
+      setPastRecognition(true);
       // Measured now, while the row is still on-screen at its normal
-      // position -- this is the FLIP slide's "from" rect (see the
-      // useLayoutEffect above). Must happen before anything below starts
-      // that row fading out.
+      // position -- this is the FLIP slide's "from" rect (see
+      // useFlipSlide). Must happen before anything below starts that row
+      // fading out.
       modelSlideFromRectRef.current = modelSelectRowRef.current?.getBoundingClientRect() ?? null;
       setShowLockedModels(true);
       // Same "play the leave transition, then swap what's mounted"
@@ -487,6 +516,30 @@ export function WallImageWorkspace() {
     }
   }
 
+  // A smaller reversal than handleBackToAugment below: only undoes the
+  // "lock" step, not the whole augment->recognition arc. The routes panel
+  // fades out, the locked chips vanish, and the model-select row reappears
+  // -- sliding in FROM where the chips just were (useFlipSlide's reverse
+  // direction, mirroring handleGoToRecognition's forward slide). Doesn't
+  // touch augmentDone or pastRecognition: the image stays in its clean
+  // recognition look throughout (no outlines, not click-to-add-point) --
+  // this is purely "let me revisit the two model choices", not "let me
+  // re-edit holds". No new API call either -- holdModel/routeModel are
+  // still whatever was last picked, ready to be changed or resubmitted.
+  function handleChangeModel() {
+    modelSlideBackFromRectRef.current = lockedModelsRef.current?.getBoundingClientRect() ?? null;
+    setShowLockedModels(false);
+    setRoutesPanelEntered(false);
+    setSelectedRouteId(null);
+    setRouteHighlightPhase("idle");
+    setQueuedRouteId(null);
+    setSelectedHoldIndex(null);
+    setTimeout(() => {
+      setRecognitionDone(false);
+      setShowModelSelect(true);
+    }, MODEL_SELECT_LEAVE_MS);
+  }
+
   // Reverses the whole augment->model-select->recognition arc in one step,
   // back to full editing. The toolbar/segment panel's own CSS transitions
   // are already bidirectional (removing the class they gained just plays
@@ -497,8 +550,10 @@ export function WallImageWorkspace() {
   function handleBackToAugment() {
     setAugmentDone(false);
     setRecognitionDone(false);
+    setPastRecognition(false);
     setRoutesPanelEntered(false);
     setShowLockedModels(false);
+    modelSlideBackFromRectRef.current = null;
     setSelectedRouteId(null);
     setRouteHighlightPhase("idle");
     setQueuedRouteId(null);
@@ -564,6 +619,9 @@ export function WallImageWorkspace() {
               <span className={styles.lockedModelChipLabel}>Route model</span>
               <span className={styles.lockedModelChipValue}>{routeModel}</span>
             </span>
+            <button type="button" className={styles.changeModelButton} onClick={handleChangeModel}>
+              Change model
+            </button>
           </div>
         )}
       </div>
@@ -591,8 +649,8 @@ export function WallImageWorkspace() {
               setWebcamActive(false);
             }}
             onAddSegmentPoint={handleAddSegmentPoint}
-            interactive={!recognitionDone}
-            showHoldOutline={!recognitionDone}
+            interactive={!pastRecognition}
+            showHoldOutline={!pastRecognition}
             overlay={
               recognitionDone &&
               visibleHolds.length > 0 && (
