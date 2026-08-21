@@ -15,9 +15,6 @@ import { StepIndicator } from "@/components/step-indicator/StepIndicator";
 import { ModelSelect } from "@/components/model-select/ModelSelect";
 import styles from "./WallImageWorkspace.module.css";
 
-const HOLD_MODEL_OPTIONS = ["Color-only", "DINO-only", "Combined"];
-const ROUTE_MODEL_OPTIONS = ["Color-only", "Color + Spatial", "Combined"];
-
 /**
  * How long SegmentPanel's own closing sequence takes end to end (shrink
  * 530ms + reform ~895ms + its final opacity fade 450ms -- see
@@ -141,7 +138,18 @@ export function WallImageWorkspace() {
   const [pendingPoints, setPendingPoints] = useState<Coordinate[]>([]);
   const [detecting, setDetecting] = useState(false);
   const [chalkBySegmentId, setChalkBySegmentId] = useState<Record<string, number>>({});
-  const [lighting, setLighting] = useState(0);
+  // Hex color sampled from the image for each segment (SegmentCard's
+  // "Choose color" eyedropper) -- purely a client-side preview tint on
+  // that segment's own polygon outline, so unlike chalk/lighting this
+  // never goes into buildAugmentationPayload below.
+  const [colorBySegmentId, setColorBySegmentId] = useState<Record<string, string>>({});
+  // segmentId of the card currently waiting on a click on the image to
+  // sample from, or null if no pick is in progress.
+  const [pickingColorSegmentId, setPickingColorSegmentId] = useState<string | null>(null);
+  // 50 is the slider's midpoint -- the original, unmodified image. See
+  // ImageCanvas's lightingPercent doc for how values on either side map
+  // to darker/lighter.
+  const [lighting, setLighting] = useState(50);
   const [webcamActive, setWebcamActive] = useState(false);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [gallerySelecting, setGallerySelecting] = useState(false);
@@ -153,6 +161,12 @@ export function WallImageWorkspace() {
   const [modelSelectEntered, setModelSelectEntered] = useState(false);
   const [holdModel, setHoldModel] = useState<string | null>(null);
   const [routeModel, setRouteModel] = useState<string | null>(null);
+  // The two model-select dropdowns' own option lists -- fetched once from
+  // GET /pipeline/available_configs rather than hardcoded here, so a newly
+  // registered pipeline method (src/pipeline/*/*_factory.py) shows up
+  // without a frontend deploy. Empty until that first fetch resolves.
+  const [holdModelOptions, setHoldModelOptions] = useState<string[]>([]);
+  const [routeModelOptions, setRouteModelOptions] = useState<string[]>([]);
   const [inferring, setInferring] = useState(false);
 
   // Recognition results -- another phase of this same page, not a route
@@ -193,6 +207,27 @@ export function WallImageWorkspace() {
   const [routeHighlightPhase, setRouteHighlightPhase] = useState<RouteHighlightPhase>("idle");
   const [queuedRouteId, setQueuedRouteId] = useState<number | null>(null);
   const [selectedHoldIndex, setSelectedHoldIndex] = useState<number | null>(null);
+
+  // Fetched once on mount -- well before the user could ever reach the
+  // model-select step -- rather than on-demand when that step first shows,
+  // so the dropdowns already have their options the instant they appear
+  // instead of opening on an empty list and populating a beat later.
+  useEffect(() => {
+    const controller = new AbortController();
+    apiClient
+      .getAvailableConfigs(controller.signal)
+      .then(({ holdDetector, routeClassifier }) => {
+        setHoldModelOptions(holdDetector);
+        setRouteModelOptions(routeClassifier);
+      })
+      .catch(() => {
+        // See GalleryPicker's identical categories effect for why this
+        // checks our own controller instead of the caught error.
+        if (controller.signal.aborted) return;
+        setError("Couldn't load the available models. Try again.");
+      });
+    return () => controller.abort();
+  }, []);
 
   // Mount, wait a paint, then trigger -- without the gap there's no
   // "before" frame for the browser to animate from, so the toolbar's two
@@ -262,8 +297,16 @@ export function WallImageWorkspace() {
   const showRecognitionButton = holdModel !== null && routeModel !== null;
   const [recognitionEntered, setRecognitionEntered] = useState(false);
 
+  // Also keyed on showModelSelect (not just showRecognitionButton) so
+  // "Change model" re-arms this entrance too. handleChangeModel doesn't
+  // clear holdModel/routeModel, so showRecognitionButton is already true
+  // the moment the panel remounts -- without showModelSelect in the deps,
+  // this effect wouldn't rerun on that round trip, recognitionEntered would
+  // stay stale-true from the first time around, and the button would render
+  // already fully "in" while modelSelectRow is still mid-FLIP-slide back
+  // from the locked chips, i.e. it'd appear before the dropdown ever shows.
   useEffect(() => {
-    if (!showRecognitionButton) {
+    if (!showRecognitionButton || !showModelSelect) {
       setRecognitionEntered(false);
       return;
     }
@@ -275,7 +318,7 @@ export function WallImageWorkspace() {
       cancelAnimationFrame(raf1);
       cancelAnimationFrame(raf2);
     };
-  }, [showRecognitionButton]);
+  }, [showRecognitionButton, showModelSelect]);
 
   const routes = useMemo(() => recognitionResult?.routes ?? [], [recognitionResult]);
 
@@ -363,6 +406,8 @@ export function WallImageWorkspace() {
       setSegments([]);
       setPendingPoints([]);
       setChalkBySegmentId({});
+      setColorBySegmentId({});
+      setPickingColorSegmentId(null);
       setWebcamActive(false);
       setAugmentDone(false);
       setShowModelSelect(false);
@@ -429,6 +474,31 @@ export function WallImageWorkspace() {
     setChalkBySegmentId((prev) => ({ ...prev, [segmentId]: value }));
   }
 
+  // Toggling the same card's "Choose color" again cancels the pick instead
+  // of restarting it; choosing a different card just moves the pick over.
+  function handleChooseColor(segmentId: string) {
+    setPickingColorSegmentId((prev) => (prev === segmentId ? null : segmentId));
+  }
+
+  // ImageCanvas's onPickColor -- fires once the user clicks the image while
+  // a pick is in progress.
+  function handlePickColor(color: string) {
+    if (!pickingColorSegmentId) return;
+    setColorBySegmentId((prev) => ({ ...prev, [pickingColorSegmentId]: color }));
+    setPickingColorSegmentId(null);
+  }
+
+  // Escape backs out of a color pick without sampling anything, same as it
+  // closes a ModelSelect dropdown.
+  useEffect(() => {
+    if (!pickingColorSegmentId) return;
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setPickingColorSegmentId(null);
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [pickingColorSegmentId]);
+
   async function handleRemoveSegment(segmentId: string) {
     setSegments((prev) => prev.filter((segment) => segment.segmentId !== segmentId));
     setChalkBySegmentId((prev) => {
@@ -436,6 +506,12 @@ export function WallImageWorkspace() {
       delete next[segmentId];
       return next;
     });
+    setColorBySegmentId((prev) => {
+      const next = { ...prev };
+      delete next[segmentId];
+      return next;
+    });
+    setPickingColorSegmentId((prev) => (prev === segmentId ? null : prev));
     try {
       await apiClient.deleteWorkingSegment(segmentId);
     } catch {
@@ -640,6 +716,9 @@ export function WallImageWorkspace() {
             lightingPercent={lighting}
             segments={segments}
             chalkBySegmentId={chalkBySegmentId}
+            colorBySegmentId={colorBySegmentId}
+            pickingColor={pickingColorSegmentId !== null}
+            onPickColor={handlePickColor}
             pendingPoints={pendingPoints}
             webcamActive={webcamActive}
             loading={loading || detecting}
@@ -711,6 +790,9 @@ export function WallImageWorkspace() {
             chalkBySegmentId={chalkBySegmentId}
             onChalkChange={handleChalkChange}
             onRemove={handleRemoveSegment}
+            colorBySegmentId={colorBySegmentId}
+            pickingSegmentId={pickingColorSegmentId}
+            onChooseColor={handleChooseColor}
             closing={augmentDone}
           />
 
@@ -721,13 +803,13 @@ export function WallImageWorkspace() {
               <div className={styles.modelSelectRow} ref={modelSelectRowRef}>
                 <ModelSelect
                   label="hold model"
-                  options={HOLD_MODEL_OPTIONS}
+                  options={holdModelOptions}
                   value={holdModel}
                   onChange={setHoldModel}
                 />
                 <ModelSelect
                   label="route model"
-                  options={ROUTE_MODEL_OPTIONS}
+                  options={routeModelOptions}
                   value={routeModel}
                   onChange={setRouteModel}
                 />

@@ -7,13 +7,18 @@ import uuid
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from PIL import Image as PILImage
 
-from ..pipeline.hold_detector.hold_detector_factory import hold_detector_factory
+from ..pipeline.hold_detector.hold_detector_factory import (
+    AVAILABLE_HOLD_DETECTORS,
+    hold_detector_factory,
+)
 from ..pipeline.route_discriminator.route_discriminator_factory import (
+    AVAILABLE_ROUTE_DISCRIMINATORS,
     route_discriminator_factory,
 )
 from ..pipeline.route_discriminator_pipeline import RouteDiscriminatorPipeline
 from .schemas import (
     AugmentWorkingImageRequest,
+    AvailableConfigsResponse,
     Coordinate,
     DetectSegmentsResponse,
     HoldResult,
@@ -93,6 +98,23 @@ async def augment_working_image(body: AugmentWorkingImageRequest) -> None:
     bake into the image").
     """
     return None
+
+
+@router.get("/pipeline/available_configs", response_model=AvailableConfigsResponse)
+async def get_available_configs() -> AvailableConfigsResponse:
+    """
+    Lists the hold-detector/route-discriminator implementations the
+    pipeline actually knows how to build -- straight from
+    hold_detector_factory/route_discriminator_factory's own registries,
+    the same ones /pipeline/infer/working below resolves method names
+    through. The Augment step's model-select dropdowns (WallImageWorkspace)
+    call this instead of carrying a hardcoded frontend list, so a newly
+    registered method shows up there without a frontend deploy.
+    """
+    return AvailableConfigsResponse(
+        hold_detector=AVAILABLE_HOLD_DETECTORS,
+        route_classifier=AVAILABLE_ROUTE_DISCRIMINATORS,
+    )
 
 
 @router.post("/pipeline/infer/working", response_model=InferWorkingResponse)

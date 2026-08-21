@@ -1,7 +1,7 @@
 import { API_BASE_URL } from "./config";
 import { request, requestBlob } from "./client";
 import type { RouteDetectionApiClient } from "./contract";
-import type { Coordinate, InferenceResult, Segment } from "./types";
+import type { AvailableConfigs, Coordinate, InferenceResult, Segment } from "./types";
 
 /** One entry returned by Nginx's JSON autoindex for the gallery directory. */
 interface GalleryDirectoryEntry {
@@ -21,6 +21,12 @@ interface DetectSegmentsResponse {
     segment_id: string;
     polygon: { points: Coordinate[] };
   }[];
+}
+
+/** Wire shape returned by `GET /pipeline/available_configs` (src/backend/schemas.py). */
+interface AvailableConfigsResponse {
+  hold_detector: string[];
+  route_classifier: string[];
 }
 
 /** Wire shape returned by `POST /pipeline/infer/working` (src/backend/schemas.py). */
@@ -136,6 +142,16 @@ export const restApiClient: RouteDetectionApiClient = {
 
   setPipeline(config) {
     return request("/pipeline", { method: "PUT", body: config });
+  },
+
+  async getAvailableConfigs(signal) {
+    const raw = await request<AvailableConfigsResponse>("/pipeline/available_configs", {
+      signal,
+    });
+    return {
+      holdDetector: raw.hold_detector,
+      routeClassifier: raw.route_classifier,
+    } satisfies AvailableConfigs;
   },
 
   async listGalleryCategories(signal) {

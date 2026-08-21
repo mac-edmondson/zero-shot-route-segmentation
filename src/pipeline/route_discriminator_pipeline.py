@@ -31,5 +31,5 @@ class RouteDiscriminatorPipeline:
     def mark_routes(
         images: Sequence[Image], routes: Sequence[Sequence[Route]]
     ) -> Sequence[Image]:
-        """Render hold overlays without changing detection behavior."""
+        """Render hold overlays without changing detxection behavior."""
         return RouteDiscriminator.mark_routes(images, routes)

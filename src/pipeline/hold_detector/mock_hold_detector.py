@@ -15,7 +15,7 @@ MIN_NUM_POINTS_PER_HOLD = 10
 MAX_NUM_POINTS_PER_HOLD = 200
 
 # Distance from a hold's generated centroid to each vertex, in pixels.
-MIN_POINT_DISTANCE = 1
+MIN_POINT_DISTANCE = 90
 MAX_POINT_DISTANCE = 100
 
 # Keep generated geometry bounded and reasonably varied for mock data.

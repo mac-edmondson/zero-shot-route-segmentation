@@ -6,10 +6,9 @@ import { apiClient } from "@/lib/api";
 import type { GalleryImage } from "@/lib/api";
 import styles from "./GalleryPicker.module.css";
 
-/** How many tiles get mounted (and so how many thumbnail requests fire) per reveal step. */
+/** How many tiles get mounted (and so how many thumbnail requests fire) per reveal step,
+ * and also how many more tiles each "Load more" click adds. */
 const REVEAL_BATCH_SIZE = 10;
-/** Auto-reveal pauses at this many tiles until the user clicks "Load more". */
-const AUTO_REVEAL_CEILING_STEP = 50;
 /** Stagger between batches so the free-tier gallery server never sees more
  * than REVEAL_BATCH_SIZE concurrent thumbnail requests from one picker. */
 const REVEAL_INTERVAL_MS = 350;
@@ -129,14 +128,16 @@ interface GalleryCategoryImagesProps {
  * mounted progressively -- REVEAL_BATCH_SIZE at a time -- since each tile's
  * <img> fires its own request straight at the external gallery server for
  * its thumbnail; mounting all of them (a category can run to 1000+) at once
- * both jank the grid and hammers that server's free tier. Auto-reveal pauses
- * every AUTO_REVEAL_CEILING_STEP tiles until the user asks for more.
+ * both jank the grid and hammers that server's free tier. Only the first
+ * REVEAL_BATCH_SIZE tiles load on their own; every batch after that only
+ * fires once the user clicks "Load more", so the server never sees more
+ * requests than the user actually asked for.
  */
 function GalleryCategoryImages({ category, onSelect, selecting }: GalleryCategoryImagesProps) {
   const [images, setImages] = useState<GalleryImage[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [revealed, setRevealed] = useState(REVEAL_BATCH_SIZE);
-  const [ceiling, setCeiling] = useState(AUTO_REVEAL_CEILING_STEP);
+  const [ceiling, setCeiling] = useState(REVEAL_BATCH_SIZE);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -190,7 +191,7 @@ function GalleryCategoryImages({ category, onSelect, selecting }: GalleryCategor
         <Button
           type="button"
           className={styles.loadMore}
-          onClick={() => setCeiling((c) => c + AUTO_REVEAL_CEILING_STEP)}
+          onClick={() => setCeiling((c) => c + REVEAL_BATCH_SIZE)}
         >
           Load more
         </Button>

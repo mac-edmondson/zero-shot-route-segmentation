@@ -85,3 +85,17 @@ class InferWorkingResponse(BaseModel):
 
     routes: list[RouteResult]
     inference_metrics: dict[str, float] = {}
+
+
+class AvailableConfigsResponse(BaseModel):
+    """Response of `GET /pipeline/available_configs` -- the hold-detector/
+    route-classifier implementation names the model-select dropdowns
+    (WallImageWorkspace) should offer, straight from the pipeline's own
+    factory registries (src/pipeline/*/*_factory.py). No camelCase alias
+    here: unlike AugmentWorkingImageRequest above, this is a response the
+    backend produces, not a body it has to accept from the frontend, so it's
+    free to just use the field names the REST spec already gives in
+    snake_case."""
+
+    hold_detector: list[str]
+    route_classifier: list[str]

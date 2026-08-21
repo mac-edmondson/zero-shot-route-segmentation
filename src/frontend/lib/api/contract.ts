@@ -1,6 +1,7 @@
 import type {
   AugmentWorkingImageRequest,
   AugmentWorkingImageResult,
+  AvailableConfigs,
   Coordinate,
   GalleryImage,
   ImageSummary,
@@ -59,6 +60,15 @@ export interface RouteDetectionApiClient {
 
   getPipeline(signal?: AbortSignal): Promise<PipelineConfig>;
   setPipeline(config: PipelineConfig): Promise<PipelineConfig>;
+
+  /**
+   * Lists the hold-detector/route-classifier implementations the backend
+   * actually supports (its own pipeline factory registries) -- the
+   * model-select dropdowns in the Augment step (WallImageWorkspace) call
+   * this instead of carrying a hardcoded option list, so a newly
+   * registered method shows up there without a frontend deploy.
+   */
+  getAvailableConfigs(signal?: AbortSignal): Promise<AvailableConfigs>;
 
   /**
    * Lists the top-level categories in the external sample-image gallery
