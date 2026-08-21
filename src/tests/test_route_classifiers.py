@@ -3,8 +3,8 @@ from PIL import Image, ImageDraw
 
 from pipeline.interfaces.data_models import Coordinate, Hold, Polygon
 from pipeline.interfaces.errors import BatchAlignmentError
-from pipeline.route_classifier.color_only_route_classifier import (
-    ColorOnlyRouteClassifier,
+from pipeline.route_discriminator.color_only_route_discriminator import (
+    ColorOnlyRouteDiscriminator,
 )
 
 
@@ -15,21 +15,21 @@ def holds() -> list[Hold]:
     ]
 
 
-def test_color_classifier_groups_holds_and_marks_routes():
+def test_color_discriminator_groups_holds_and_marks_routes():
     image = Image.new("RGB", (10, 10))
     draw = ImageDraw.Draw(image)
     draw.polygon([(1, 1), (3, 1), (1, 3)], fill=(255, 0, 0))
     draw.polygon([(6, 6), (8, 6), (6, 8)], fill=(0, 0, 255))
-    classifier = ColorOnlyRouteClassifier(n_clusters=2)
-    routes = classifier.get_routes([image], [holds()])
+    discriminator = ColorOnlyRouteDiscriminator(n_clusters=2)
+    routes = discriminator.get_routes([image], [holds()])
     assert len(routes) == 1
     assert sorted(len(route.holds) for route in routes[0]) == [1, 1]
-    assert len(classifier.mark_routes([image], routes)) == 1
+    assert len(discriminator.mark_routes([image], routes)) == 1
 
 
-def test_color_classifier_validates_batch_alignment():
-    classifier = ColorOnlyRouteClassifier(n_clusters=1)
+def test_color_discriminator_validates_batch_alignment():
+    discriminator = ColorOnlyRouteDiscriminator(n_clusters=1)
     with pytest.raises(BatchAlignmentError):
-        classifier.get_routes([Image.new("RGB", (1, 1))], [])
+        discriminator.get_routes([Image.new("RGB", (1, 1))], [])
     with pytest.raises(BatchAlignmentError):
-        classifier.mark_routes([Image.new("RGB", (1, 1))], [])
+        discriminator.mark_routes([Image.new("RGB", (1, 1))], [])

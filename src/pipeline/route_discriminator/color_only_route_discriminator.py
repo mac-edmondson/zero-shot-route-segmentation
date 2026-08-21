@@ -6,8 +6,8 @@ from ..interfaces.data_models import Route
 from ..interfaces.errors import BatchAlignmentError
 
 
-class ColorOnlyRouteClassifier:
-    implementation_id = "color_only_classifier"
+class ColorOnlyRouteDiscriminator:
+    implementation_id = "color_only_discriminator"
 
     def __init__(
         self,

@@ -11,12 +11,14 @@ import cv2
 import numpy as np
 import torch
 from PIL import Image
-from transformers import Sam3TrackerModel, Sam3TrackerProcessor, PreTrainedModel
+from transformers import Sam3TrackerModel, Sam3TrackerProcessor
+
+from ..utility.sam3 import SAM3Base
 
 ClickCoordinates = Sequence[Sequence[int | float]]
 
 
-class SAMWrapper:
+class SAMWrapper(SAM3Base):
     """Provide click-guided SAM segmentation for the front-end UI."""
 
     def __init__(
@@ -26,37 +28,11 @@ class SAMWrapper:
         device: str | torch.device | None = None,
     ) -> None:
         self.model_id = model_id
-        self.model_dir = Path(model_dir)
-        self.device = self._resolve_device(device)
-        self.model: PreTrainedModel | None = None
-        self.processor: Any | None = None
-
-    @staticmethod
-    def _resolve_device(device: str | torch.device | None) -> torch.device:
-        resolved = torch.device(
-            "cuda" if device is None and torch.cuda.is_available() else device or "cpu"
-        )
-        if resolved.type not in {"cpu", "cuda"}:
-            raise ValueError("SAMWrapper supports only CPU and CUDA devices.")
-        if resolved.type == "cuda" and not torch.cuda.is_available():
-            raise RuntimeError("CUDA was requested, but it is not available.")
-        if (
-            resolved.type == "cuda"
-            and resolved.index is not None
-            and resolved.index >= torch.cuda.device_count()
-        ):
-            raise RuntimeError(f"CUDA device index {resolved.index} is not available.")
-        return resolved
+        super().__init__(model_dir=model_dir, device=device)
 
     def load_model(self) -> None:
         """Load the configured local SAM model and processor."""
-        if (
-            not self.model_dir.is_dir()
-            or not (self.model_dir / "config.json").is_file()
-        ):
-            raise FileNotFoundError(
-                f"Model files for '{self.model_id}' were not found in '{self.model_dir}'."
-            )
+        self._require_model_files(("config.json",), model_id=self.model_id)
         try:
             self.processor = Sam3TrackerProcessor.from_pretrained(
                 self.model_dir, local_files_only=True
@@ -75,10 +51,7 @@ class SAMWrapper:
         self, input_img: Image.Image, click_coordinates: ClickCoordinates
     ) -> np.ndarray:
         """Segment one mask for each user-selected positive click."""
-        if self.model is None or self.processor is None:
-            raise RuntimeError(
-                "Model is not loaded. Call load_model() before generate_mask()."
-            )
+        self._require_loaded()
         if not isinstance(input_img, Image.Image):
             raise TypeError("input_img must be a PIL.Image.Image.")
         image = input_img.convert("RGB")
@@ -144,35 +117,6 @@ class SAMWrapper:
                 )
             result.append((x, y))
         return result
-
-    @staticmethod
-    def _binary_masks(
-        masks: Any, expected_count: int | None = None, threshold: bool = False
-    ) -> np.ndarray:
-        if isinstance(masks, torch.Tensor):
-            masks = masks.detach().cpu().numpy()
-        masks = np.asarray(masks)
-        if masks.ndim == 4 and masks.shape[1] == 1:
-            masks = masks[:, 0]
-        if expected_count is not None and (
-            masks.ndim != 3 or masks.shape[0] != expected_count
-        ):
-            raise RuntimeError(
-                f"SAM post-processing returned an unexpected shape: {masks.shape}."
-            )
-        if threshold:
-            masks = np.greater(masks, 0)
-        if masks.ndim != 3 or masks.shape[1] == 0 or masks.shape[2] == 0:
-            raise ValueError(
-                "Masks must have shape (N, H, W) with non-empty spatial dimensions."
-            )
-        if masks.dtype == np.bool_:
-            return masks
-        if not np.issubdtype(masks.dtype, np.number) or not np.all(
-            np.isin(masks, (0, 1))
-        ):
-            raise ValueError("Masks must be binary boolean or numeric 0/1 arrays.")
-        return np.equal(masks, 1)
 
     @staticmethod
     def to_polygons(

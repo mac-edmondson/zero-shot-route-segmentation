@@ -9,8 +9,8 @@ from .interfaces.data_models import Hold, Route, Image
 class PipelineDescriptor:
     detector_id: str
     detector_config: dict
-    classifier_id: str
-    classifier_config: dict
+    discriminator_id: str
+    discriminator_config: dict
 
 
 class RouteDiscriminatorPipeline:

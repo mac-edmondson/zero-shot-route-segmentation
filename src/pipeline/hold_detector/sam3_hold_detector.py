@@ -15,6 +15,7 @@ from transformers import Sam3VideoModel, Sam3VideoProcessor
 
 from ..interfaces.data_models import Coordinate, Hold, Polygon
 from ..interfaces.errors import InvalidImageError
+from ..utility.sam3 import SAM3Base
 from .hold_detector import (
     HoldDetector,
     InvalidHoldDetectorConfigError,
@@ -31,41 +32,12 @@ class MaskPrediction:
     confidence: float
 
 
-class SAM3HoldWrapper:
+class SAM3HoldWrapper(SAM3Base):
     """Load SAM3 and run one text or text-plus-exemplar inference session."""
-
-    def __init__(
-        self,
-        model_dir: str | Path = "/home/vault/v123be/v123be56/LIT/models/sam3",
-        device: str | torch.device | None = None,
-    ) -> None:
-        self.model_dir = Path(model_dir)
-        self.device = self._resolve_device(device)
-        self.model: Any | None = None
-        self.processor: Any | None = None
-
-    @staticmethod
-    def _resolve_device(device: str | torch.device | None) -> torch.device:
-        resolved = torch.device(
-            "cuda" if device is None and torch.cuda.is_available() else device or "cpu"
-        )
-        if resolved.type not in {"cpu", "cuda", "mps"}:
-            raise ValueError("SAM3HoldWrapper supports CPU, CUDA, and MPS devices.")
-        if resolved.type == "cuda" and not torch.cuda.is_available():
-            raise RuntimeError("CUDA was requested, but it is not available.")
-        if resolved.type == "mps" and not torch.backends.mps.is_available():
-            raise RuntimeError("MPS was requested, but it is not available.")
-        return resolved
 
     def load_model(self) -> None:
         """Load the configured local SAM3 video model and processor."""
-        if (
-            not (self.model_dir / "config.json").is_file()
-            or not (self.model_dir / "model.safetensors").is_file()
-        ):
-            raise FileNotFoundError(
-                f"Local SAM3 model files were not found in '{self.model_dir}'."
-            )
+        self._require_model_files(("config.json", "model.safetensors"))
         self.processor = Sam3VideoProcessor.from_pretrained(
             self.model_dir, local_files_only=True
         )
@@ -81,10 +53,7 @@ class SAM3HoldWrapper:
         exemplar: Exemplar | None,
     ) -> list[MaskPrediction]:
         """Run one SAM3 session; multi-exemplar orchestration belongs to the detector."""
-        if self.model is None or self.processor is None:
-            raise RuntimeError(
-                "Model is not loaded. Call load_model() before inference."
-            )
+        self._require_loaded()
         if not isinstance(image, Image.Image) or not text_prompt.strip():
             raise ValueError(
                 "image must be a PIL image and text_prompt must not be empty."
@@ -269,10 +238,6 @@ class SAMHoldDetector(HoldDetector, SAM3HoldWrapper):
             self._to_holds([prediction.mask for prediction in batch], mode)
             for batch in predictions
         ]
-
-    def _ensure_model_loaded(self) -> None:
-        if self.model is None:
-            self.load_model()
 
     def _prediction_batches(
         self, images: Sequence[Image.Image]

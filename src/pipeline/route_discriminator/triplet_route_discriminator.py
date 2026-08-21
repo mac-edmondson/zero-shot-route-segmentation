@@ -1,4 +1,4 @@
-"""Pretrained TripletNet route classifier."""
+"""Pretrained TripletNet route discriminator."""
 
 from __future__ import annotations
 
@@ -14,8 +14,8 @@ from ..interfaces.data_models import Hold, Route
 from ..interfaces.errors import BatchAlignmentError
 
 
-class TripletRouteClassifier:
-    implementation_id = "triplet_route_classifier"
+class TripletRouteDiscriminator:
+    implementation_id = "triplet_route_discriminator"
     _WEIGHTS = (
         Path(__file__).resolve().parents[3]
         / "models"
