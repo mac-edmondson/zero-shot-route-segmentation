@@ -1,0 +1,1 @@
+These files came from here: https://www.kaggle.com/datasets/tomasslama/indoor-climbing-gym-hold-segmentation?select=model

@@ -48,7 +48,7 @@ class MaskRCNNHoldDetector:
         if self.device.type == "cuda" and not torch.cuda.is_available():
             raise RuntimeError("CUDA was requested, but it is not available.")
         self.score_threshold, self.include_volumes = score_threshold, include_volumes
-        self.detectron2_source = Path(detectron2_source) if detectron2_source else None
+        self.detectron2_source = Path(detectron2_source) if Path(detectron2_source).exists() else None
         self.extra_config, self.model, self.augmentation = dict(config), None, None
 
     @property
