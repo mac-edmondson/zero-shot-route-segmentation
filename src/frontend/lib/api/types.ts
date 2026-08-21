@@ -44,11 +44,22 @@ export interface ImageSummary {
   category: string;
 }
 
+/**
+ * Status of a backend job that runs in the background rather than blocking
+ * the request that started it -- segmentation, augmentation, and inference
+ * all follow this same start/poll shape (see `PUT|GET /image/working`,
+ * `POST|GET /image/working/segment`, `POST /image/working/augment` +
+ * `GET /image/working`, and `POST|GET /pipeline/infer/working`).
+ */
+export type JobStatus = "processing" | "completed" | "failed";
+
 /** The image currently loaded into the working slot (`GET /image/working`). */
 export interface WorkingImage {
-  imageId: string;
+  status: JobStatus;
+  imageId: string | null;
   /** Data URL or backend-hosted URL for the image bytes. */
-  image: string;
+  image: string | null;
+  error: string | null;
 }
 
 /**
@@ -70,16 +81,12 @@ export interface Segment {
 export interface SegmentAugmentation {
   segmentId: string;
   chalkPercent: number;
+  color?: RGBColor;
 }
 
 export interface AugmentWorkingImageRequest {
   lightingPercent: number;
   segments: SegmentAugmentation[];
-}
-
-export interface AugmentWorkingImageResult {
-  imageId: string;
-  image: string;
 }
 
 /**
@@ -117,13 +124,14 @@ export interface AvailableConfigs {
   routeClassifier: RouteClassifierMethod[];
 }
 
-export type InferenceStatus = "processing" | "completed";
+export type InferenceStatus = JobStatus;
 
 export interface InferenceResult {
   status: InferenceStatus;
   /** One route list per input image; each route is a list of holds. */
   routes: Route[];
   inferenceMetrics: Record<string, number>;
+  error: string | null;
 }
 
 /**

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, RefObject } from "react";
 import { apiClient } from "@/lib/api";
-import type { Coordinate, Hold, InferenceResult, Segment } from "@/lib/api";
+import type { Coordinate, Hold, InferenceResult, RGBColor, Segment } from "@/lib/api";
 import { AppHeader } from "@/components/header/AppHeader";
 import { ImageSourceButtons } from "@/components/image-source-buttons/ImageSourceButtons";
 import { GalleryPicker } from "@/components/gallery-picker/GalleryPicker";
@@ -48,6 +48,12 @@ const ROUTE_COLORS = ["#ff5000", "#00b4ff", "#b450ff", "#50dc50", "#ffc800", "#f
 
 type RouteHighlightPhase = "idle" | "active" | "exiting";
 
+function createLocalImageId(): string {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : Math.random().toString(36).slice(2);
+}
+
 function fileToDataUrl(file: File | Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -55,6 +61,15 @@ function fileToDataUrl(file: File | Blob): Promise<string> {
     reader.onerror = () => reject(reader.error);
     reader.readAsDataURL(file);
   });
+}
+
+/** Converts a "#rrggbb" hex color (as sampled by ImageCanvas's eyedropper)
+ * into the RGBColor shape the augmentation API expects. */
+function hexToRgb(hex: string | undefined): RGBColor | undefined {
+  const match = hex ? /^#?([0-9a-f]{6})$/i.exec(hex) : null;
+  if (!match) return undefined;
+  const value = parseInt(match[1], 16);
+  return { r: (value >> 16) & 0xff, g: (value >> 8) & 0xff, b: value & 0xff };
 }
 
 /**
@@ -107,12 +122,6 @@ function useFlipSlide(
   }, [active, elRef, fromRectRef, durationMs]);
 }
 
-function createLocalImageId(): string {
-  return typeof crypto !== "undefined" && "randomUUID" in crypto
-    ? crypto.randomUUID()
-    : Math.random().toString(36).slice(2);
-}
-
 /**
  * The ROUTNet landing page (Project stuff/UI_page_1.png): pick or capture a
  * wall image, mark hold segments, adjust lighting/chalk, then run
@@ -130,18 +139,14 @@ function createLocalImageId(): string {
 export function WallImageWorkspace() {
   const [imageId, setImageId] = useState<string | null>(null);
   const [imageSrc, setImageSrc] = useState<string | null>(null);
-  /** Original image bytes, kept around so a detect/infer call can send the
-   * whole image again -- the backend is stateless and never stores it. */
-  const [imageFile, setImageFile] = useState<File | Blob | null>(null);
   const [segments, setSegments] = useState<Segment[]>([]);
   /** Points clicked but not yet sent for detection. */
   const [pendingPoints, setPendingPoints] = useState<Coordinate[]>([]);
   const [detecting, setDetecting] = useState(false);
   const [chalkBySegmentId, setChalkBySegmentId] = useState<Record<string, number>>({});
   // Hex color sampled from the image for each segment (SegmentCard's
-  // "Choose color" eyedropper) -- purely a client-side preview tint on
-  // that segment's own polygon outline, so unlike chalk/lighting this
-  // never goes into buildAugmentationPayload below.
+  // "Choose color" eyedropper) -- feeds into buildAugmentationPayload below
+  // as that segment's augmentation color, alongside its chalk percent.
   const [colorBySegmentId, setColorBySegmentId] = useState<Record<string, string>>({});
   // segmentId of the card currently waiting on a click on the image to
   // sample from, or null if no pick is in progress.
@@ -473,14 +478,25 @@ export function WallImageWorkspace() {
     setLoading(true);
     setError(null);
     try {
-      // The image never goes to the backend here -- it's stateless and
-      // never stores images (see the imageFile comment above); loading it
-      // into the panel is purely a local render. The whole file only gets
-      // sent over the wire later, per detect/infer call.
+      // Render is purely local -- decoding `file` into a data URL never
+      // touches the backend, so it can't fail because of it.
       const dataUrl = await fileToDataUrl(file);
+
+      // Best-effort: also upload the file as the working image
+      // (PUT /image/working) so the backend session actually has it -- this
+      // must not block the local render. `PUT /image/working` returns no
+      // body (it's just a session-side reference), so the id shown here is
+      // always a local one purely for UI gating; it never has to match
+      // anything server-side, since later steps identify the working image
+      // implicitly, through the session, rather than by this id.
+      try {
+        await apiClient.setWorkingImage(file);
+      } catch (err) {
+        console.warn("setWorkingImage failed; continuing with a local image id", err);
+      }
+
       setImageId(createLocalImageId());
       setImageSrc(dataUrl);
-      setImageFile(file);
       setSegments([]);
       setPendingPoints([]);
       setChalkBySegmentId({});
@@ -529,11 +545,11 @@ export function WallImageWorkspace() {
   }
 
   async function handleDetectSegments() {
-    if (!imageId || !imageFile || pendingPoints.length === 0) return;
+    if (!imageId || pendingPoints.length === 0) return;
     setDetecting(true);
     setError(null);
     try {
-      const detected = await apiClient.detectWorkingSegments(imageFile, pendingPoints);
+      const detected = await apiClient.detectWorkingSegments(pendingPoints);
       setSegments((prev) => [...prev, ...detected]);
       setChalkBySegmentId((prev) => {
         const next = { ...prev };
@@ -597,17 +613,18 @@ export function WallImageWorkspace() {
     }
   }
 
-  // Shared by handleFinishAugment and handleGoToRecognition -- both send
-  // the same lighting/chalk snapshot to the backend (see the module-level
-  // comment on inferWorkingPipeline in lib/api/contract.ts for why
-  // Recognition has to carry this again instead of relying on Finish
-  // Augment having stored it server-side).
+  // Used by handleFinishAugment to snapshot the current lighting/chalk/color
+  // state into the shape POST /image/working/augment expects. Recognition
+  // no longer needs this itself -- the backend session keeps the augmented
+  // working image between requests, so inferWorkingPipeline just runs
+  // against whatever Finish Augment last left there.
   function buildAugmentationPayload() {
     return {
       lightingPercent: lighting,
       segments: segments.map((segment) => ({
         segmentId: segment.segmentId,
         chalkPercent: chalkBySegmentId[segment.segmentId] ?? 0,
+        color: hexToRgb(colorBySegmentId[segment.segmentId]),
       })),
     };
   }
@@ -634,15 +651,15 @@ export function WallImageWorkspace() {
   }
 
   async function handleGoToRecognition() {
-    if (!imageFile || !holdModel || !routeModel) return;
+    if (!imageId || !holdModel || !routeModel) return;
     setInferring(true);
     setError(null);
     try {
-      const augmentation = buildAugmentationPayload();
-      const result = await apiClient.inferWorkingPipeline(imageFile, augmentation, {
-        holdDetector: holdModel,
-        routeClassifier: routeModel,
-      });
+      // Set the selected models server-side first (PUT /pipeline), then
+      // start inference with no body -- it runs against whatever working
+      // image + augmentation + config the session already has.
+      await apiClient.setPipeline({ holdDetector: holdModel, routeClassifier: routeModel });
+      const result = await apiClient.inferWorkingPipeline();
       setRecognitionResult(result);
       setPastRecognition(true);
       // Measured now, while the row is still on-screen at its normal
