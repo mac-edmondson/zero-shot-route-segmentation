@@ -11,13 +11,13 @@ dependencies = [
     "httpx>=0.27",
     "huggingface-hub",
     "numpy",
-    "opencv-python",
     "pillow",
     "pycocotools",
     "torch",
     "torchvision",
     "transformers",
     "detectron2",
+    "opencv-python-headless>=5.0.0.93",
 ]
 
 [build-system]
