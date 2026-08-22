@@ -69,7 +69,7 @@ def add_chalk(
     *,
     seed: int | None = None,
 ) -> Image:
-    """Whiten each target with independently textured chalk."""
+    """Whiten each target with smooth, patchy chalk."""
     if seed is not None and (isinstance(seed, bool) or not isinstance(seed, int)):
         raise TypeError("seed must be an integer or None.")
     polygons, strengths = _aligned(targets, strengths, "strengths")
@@ -83,7 +83,14 @@ def add_chalk(
         mask = _mask(source.size, polygon)
         if not mask.any():
             continue
-        alpha = rng.uniform(0.35, 1.0, size=mask.shape).astype(np.float32)
+        height, width = mask.shape
+        texture = rng.uniform(
+            0,
+            1,
+            size=(max(1, height // 24), max(1, width // 24)),
+        ).astype(np.float32)
+        alpha = cv2.resize(texture, (width, height), interpolation=cv2.INTER_CUBIC)
+        alpha = np.clip(alpha, 0, 1) ** 2
         values[mask] += (255 - values[mask]) * (alpha[mask, None] * strength)
     return _from_array(values)
 

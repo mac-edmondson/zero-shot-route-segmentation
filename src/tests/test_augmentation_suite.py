@@ -54,6 +54,25 @@ def test_add_chalk_validates_alignment_and_accepts_holds() -> None:
     assert result.getpixel((0, 0)) == image.getpixel((0, 0))
 
 
+def test_add_chalk_uses_smooth_patchy_texture() -> None:
+    image = PILImage.new("RGB", (96, 96), (100, 100, 100))
+    polygon = Polygon(
+        (
+            Coordinate(1, 1),
+            Coordinate(94, 1),
+            Coordinate(94, 94),
+            Coordinate(1, 94),
+        )
+    )
+
+    result = np.asarray(add_chalk(image, [polygon], [0.5], seed=0))[:, :, 0]
+    chalk = result[2:94, 2:94]
+    adjacent_difference = np.abs(np.diff(chalk.astype(int), axis=0)).mean()
+
+    assert chalk.min() < chalk.max()
+    assert adjacent_difference < 4
+
+
 def test_change_color_preserves_target_lightness() -> None:
     image = _image()
     result = change_color(image, [_polygon()], [RGBColor(220, 20, 20)])
