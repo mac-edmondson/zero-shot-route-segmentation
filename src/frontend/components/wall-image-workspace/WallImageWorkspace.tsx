@@ -5,6 +5,7 @@ import type { CSSProperties, RefObject } from "react";
 import { apiClient } from "@/lib/api";
 import type { Coordinate, Hold, InferenceResult, RGBColor, Segment } from "@/lib/api";
 import { AppHeader } from "@/components/header/AppHeader";
+import { Wordmark } from "@/components/wordmark/Wordmark";
 import { ImageSourceButtons } from "@/components/image-source-buttons/ImageSourceButtons";
 import { GalleryPicker } from "@/components/gallery-picker/GalleryPicker";
 import { ImageCanvas } from "@/components/image-canvas/ImageCanvas";
@@ -43,6 +44,19 @@ const MODEL_SELECT_REVEAL_MS_NO_SEGMENTS = 450;
  * leave transition (the same way handleBackToAugment already does) before
  * the routes panel takes its place in the same grid cell. */
 const MODEL_SELECT_LEAVE_MS = 550;
+
+/** How long the recognition loader's clone spends flying between the real
+ * logo and its resting spot, each direction -- see loaderPhase. Same
+ * duration used for both legs (in via useFlipSlide, out via the dedicated
+ * effect below) so the round trip reads symmetrically. */
+const LOADER_FLIP_MS = 650;
+/** var(--ease) (used for the "in" leg, via useFlipSlide) is an ease-out-expo
+ * curve -- fast off the start, gently settling at the end, which reads well
+ * for something arriving but noticeably rushed-then-crawling for the
+ * reverse trip. This is a symmetric ease-in-out instead, gentle at both
+ * ends, for the "out" leg's own effect below -- a calmer, evenly-paced
+ * "smooth" departure instead of the arrival curve run backwards. */
+const LOADER_OUT_EASE = "cubic-bezier(0.45, 0, 0.2, 1)";
 
 /** Per-hold reveal stagger, bottom-first (see holdsByRoute below). Purely a
  * CSS animation-delay multiplier -- no JS timer depends on it. */
@@ -151,6 +165,18 @@ function useFlipSlide(
 export function WallImageWorkspace() {
   const [imageId, setImageId] = useState<string | null>(null);
   const [imageSrc, setImageSrc] = useState<string | null>(null);
+  // The true pre-augmentation upload, kept aside so handleBackToAugment can
+  // restore it -- `imageSrc` itself gets overwritten with the real
+  // *augmented* image once Finish Augment lands (see handleFinishAugment),
+  // which is correct while looking at Recognition, but going back to edit
+  // needs the original back underneath: ImageCanvas's live lighting/chalk/
+  // color preview overlays are computed as if `imageSrc` were still the
+  // unaugmented base, so previewing again on top of the already-baked
+  // result would double the effect (and the slider could never visually
+  // get back to "no change" -- exactly the bug this fixes -- since 50%
+  // stops meaning "identical to what's showing" the moment what's showing
+  // is the augmented image instead of the original one).
+  const originalImageSrcRef = useRef<string | null>(null);
   const [segments, setSegments] = useState<Segment[]>([]);
   /** Points clicked but not yet sent for detection. */
   const [pendingPoints, setPendingPoints] = useState<Coordinate[]>([]);
@@ -163,10 +189,15 @@ export function WallImageWorkspace() {
   // segmentId of the card currently waiting on a click on the image to
   // sample from, or null if no pick is in progress.
   const [pickingColorSegmentId, setPickingColorSegmentId] = useState<string | null>(null);
-  // 50 is the slider's midpoint -- the original, unmodified image. See
-  // ImageCanvas's lightingPercent doc for how values on either side map
-  // to darker/lighter.
-  const [lighting, setLighting] = useState(50);
+  // -1 to 1, 0 = the slider's midpoint = the original, unmodified image --
+  // same scale and neutral point as the backend's own
+  // LightingAugmentationParams.intensity (src/pipeline/interfaces/
+  // augmentation.py), sent to it as-is (see buildAugmentationPayload) with
+  // no conversion needed either direction. ImageCanvas's own lightingPercent
+  // prop is a different, older 0-100/50-neutral scale it was already built
+  // around -- converted to that at the callsite below rather than changing
+  // ImageCanvas itself, so this is the only place that scale switch exists.
+  const [lightingIntensity, setLightingIntensity] = useState(0);
   const [webcamActive, setWebcamActive] = useState(false);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [gallerySelecting, setGallerySelecting] = useState(false);
@@ -194,6 +225,23 @@ export function WallImageWorkspace() {
   const [holdModelOptions, setHoldModelOptions] = useState<string[]>([]);
   const [routeModelOptions, setRouteModelOptions] = useState<string[]>([]);
   const [inferring, setInferring] = useState(false);
+
+  // --- Recognition loader -----------------------------------------------
+  // A cloned Wordmark that flies out of the real logo up in the header,
+  // down into the spot where the routes list is about to appear, loops its
+  // route-draw there for as long as inference is running (Wordmark's
+  // `loop` prop), then flies back and fades into the real logo once the
+  // backend responds -- success or failure alike, since this is purely
+  // "still working" -> "done working", not a result indicator itself.
+  // "idle": not shown. "in": flying from the header to its resting spot
+  // (useFlipSlide below drives this leg). "waiting": resting, looping.
+  // "out": flying back to the header and fading (a dedicated effect below
+  // drives this leg -- useFlipSlide only ever animates an *entrance*).
+  const [loaderPhase, setLoaderPhase] = useState<"idle" | "in" | "waiting" | "out">("idle");
+  const logoRef = useRef<HTMLHeadingElement>(null);
+  const loaderRef = useRef<HTMLDivElement>(null);
+  const loaderFromRectRef = useRef<DOMRect | null>(null);
+  // ------------------------------------------------------------------------
 
   // Recognition results -- another phase of this same page, not a route
   // (see the component docstring above).
@@ -396,6 +444,71 @@ export function WallImageWorkspace() {
   useFlipSlide(showLockedModels, lockedModelsRef, modelSlideFromRectRef, MODEL_SELECT_LEAVE_MS);
   useFlipSlide(showModelSelect, modelSelectRowRef, modelSlideBackFromRectRef, MODEL_SELECT_LEAVE_MS);
 
+  // Recognition loader, leg 1: flies in from the real logo (loaderFromRectRef
+  // is measured in handleGoToRecognition, right when loaderPhase is first
+  // set to "in", the same way modelSlideFromRectRef etc. are measured right
+  // before their own FLIP-driving state flips). Once the flight's done,
+  // settle into "waiting" -- the loop keeps running (it's Wordmark's own
+  // CSS animation, not driven from here) for as long as that phase holds.
+  useFlipSlide(loaderPhase === "in", loaderRef, loaderFromRectRef, LOADER_FLIP_MS);
+  useEffect(() => {
+    if (loaderPhase !== "in") return;
+    const timeout = setTimeout(() => setLoaderPhase("waiting"), LOADER_FLIP_MS);
+    return () => clearTimeout(timeout);
+  }, [loaderPhase]);
+
+  // Recognition loader, leg 2: flies back to wherever the real logo
+  // currently is (re-measured now, not reused from leg 1, in case the
+  // layout shifted while it was away) and fades out over it, rather than
+  // just vanishing -- reads as the clone rejoining/blending into the real
+  // logo instead of two separate marks. useFlipSlide only ever drives an
+  // *entrance* (a translate that decays to rest), so this leg -- a
+  // translate that grows away from rest, paired with a fade -- is its own
+  // effect instead of a second useFlipSlide call.
+  useLayoutEffect(() => {
+    if (loaderPhase !== "out") return;
+    const el = loaderRef.current;
+    const toRect = logoRef.current?.getBoundingClientRect();
+    if (!el || !toRect || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      // Deferred, not called inline here, same reasoning as
+      // showBackToAugment's own reset effect further up.
+      const raf = requestAnimationFrame(() => setLoaderPhase("idle"));
+      return () => cancelAnimationFrame(raf);
+    }
+    const fromRect = el.getBoundingClientRect();
+    const dx = toRect.left - fromRect.left;
+    const dy = toRect.top - fromRect.top;
+
+    el.style.transition = "none";
+    el.style.transform = "translate(0, 0)";
+    el.style.opacity = "1";
+
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        el.style.transition = `transform ${LOADER_FLIP_MS}ms ${LOADER_OUT_EASE}, opacity ${LOADER_FLIP_MS}ms ${LOADER_OUT_EASE}`;
+        el.style.transform = `translate(${dx}px, ${dy}px)`;
+        el.style.opacity = "0";
+      });
+    });
+    const timeout = setTimeout(() => setLoaderPhase("idle"), LOADER_FLIP_MS);
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+      clearTimeout(timeout);
+    };
+  }, [loaderPhase]);
+
+  // The actual trigger for leg 2 -- inferring's own true -> false edge,
+  // which fires identically on success or failure (handleGoToRecognition's
+  // finally), since this loader means "still working", not "it worked".
+  useEffect(() => {
+    if (!inferring && loaderPhase === "waiting") {
+      const raf = requestAnimationFrame(() => setLoaderPhase("out"));
+      return () => cancelAnimationFrame(raf);
+    }
+  }, [inferring, loaderPhase]);
+
   // Appears only once BOTH dropdowns have a pick -- unlike the entrance
   // timing above, this one can't be "either", because the Recognition call
   // itself (handleGoToRecognition below) needs both to build a real
@@ -543,6 +656,7 @@ export function WallImageWorkspace() {
 
       setImageId(createLocalImageId());
       setImageSrc(dataUrl);
+      originalImageSrcRef.current = dataUrl;
       setSegments([]);
       setPendingPoints([]);
       setChalkBySegmentId({});
@@ -666,22 +780,12 @@ export function WallImageWorkspace() {
   // against whatever Finish Augment last left there.
   function buildAugmentationPayload() {
     return {
-      // `lighting` is this UI's own 0-100 scale, 50 = neutral/no change --
-      // same convention ImageCanvas's live CSS preview uses (see its
-      // `(lightingPercent - 50) / 50` filter formula). The backend's
-      // AugmentWorkingImageRequest.lighting_percent is a *different* scale
-      // (see src/backend/schemas.py): -100-100, 0 = neutral, then divided
-      // by 100 into LightingAugmentationParams.intensity (src/pipeline/
-      // interfaces/augmentation.py) -- which change_lighting applies as
-      // `values += (255 - values) * intensity` (src/pipeline/
-      // preprocessing/augmentation_suite.py), i.e. a genuinely different
-      // neutral point. Sent unconverted, the slider's own neutral (50)
-      // would arrive as intensity 0.5 -- pushing every pixel halfway to
-      // white on every Finish Augment, even with the slider never touched.
-      // This is the same (lighting - 50) / 50 normalization ImageCanvas
-      // already applies, just rescaled to the backend's ±100 range instead
-      // of the CSS filter's ±0.9.
-      lightingPercent: (lighting - 50) * 2,
+      // lightingIntensity already lives on the exact -1 to 1 scale the
+      // backend's AugmentWorkingImageRequest.lighting_percent expects (see
+      // src/backend/schemas.py) and passes straight through, unconverted,
+      // into LightingAugmentationParams.intensity (src/pipeline/interfaces/
+      // augmentation.py) -- no more percent-scale round-trip in between.
+      lightingPercent: lightingIntensity,
       segments: segments.map((segment) => ({
         segmentId: segment.segmentId,
         chalkPercent: chalkBySegmentId[segment.segmentId] ?? 0,
@@ -725,6 +829,13 @@ export function WallImageWorkspace() {
 
   async function handleGoToRecognition() {
     if (!imageId || !holdModel || !routeModel) return;
+    // Measured now, before anything below starts moving -- this is the
+    // recognition loader's own FLIP "from" rect (see loaderPhase and
+    // useFlipSlide above), same pattern as modelSlideFromRectRef further
+    // down: capture the real logo's current position before the state
+    // flip that triggers the clone's entrance.
+    loaderFromRectRef.current = logoRef.current?.getBoundingClientRect() ?? null;
+    setLoaderPhase("in");
     setInferring(true);
     setError(null);
     try {
@@ -732,8 +843,23 @@ export function WallImageWorkspace() {
       // start inference with no body -- it runs against whatever working
       // image + augmentation + config the session already has.
       await apiClient.setPipeline({ holdDetector: holdModel, routeClassifier: routeModel });
-      const result = await apiClient.inferWorkingPipeline();
+      // Run alongside inference, not after it -- GET /image/working doesn't
+      // depend on the inference result, it's just the same "what does the
+      // backend currently have as the working image" fetch handleFinishAugment
+      // already uses its own augmentWorkingImage response for. That earlier
+      // swap covers the common case already, but the route/hold overlay
+      // shown here should always be paired with an image explicitly
+      // confirmed from the backend at this exact moment, via the actual
+      // GET /image/working endpoint, rather than only ever trusting a
+      // snapshot captured back when Finish Augment ran.
+      const [result, workingImage] = await Promise.all([
+        apiClient.inferWorkingPipeline(),
+        apiClient.getWorkingImage(),
+      ]);
       setRecognitionResult(result);
+      if (workingImage.image) {
+        setImageSrc(workingImage.image);
+      }
       setPastRecognition(true);
       // Measured now, while the row is still on-screen at its normal
       // position -- this is the FLIP slide's "from" rect (see
@@ -792,6 +918,13 @@ export function WallImageWorkspace() {
   // that built in (only ever mounted forward), so their own reverse fades
   // are played here explicitly before unmounting them.
   function handleBackToAugment() {
+    // Swap the real (post-augmentation) image back out for the original --
+    // see originalImageSrcRef's own comment for why this has to happen
+    // before augmentDone flips back to false and ImageCanvas's live preview
+    // overlays reactivate.
+    if (originalImageSrcRef.current) {
+      setImageSrc(originalImageSrcRef.current);
+    }
     setAugmentDone(false);
     setRecognitionDone(false);
     setPastRecognition(false);
@@ -812,6 +945,7 @@ export function WallImageWorkspace() {
     <div className={styles.workspace}>
       <AppHeader
         title="ROUTNet"
+        titleRef={logoRef}
         right={
           <StepIndicator
             current={recognitionDone ? "recognition" : "augment"}
@@ -873,7 +1007,15 @@ export function WallImageWorkspace() {
               <div
                 className={`${styles.lighting} ${styles.toolbarItem} ${styles.toolbarItemLighting} ${actionsEntered ? styles.toolbarItemIn : ""}`}
               >
-                <LabeledSlider label="Lighting" value={lighting} onChange={setLighting} />
+                <LabeledSlider
+                  label="Lighting"
+                  value={lightingIntensity}
+                  onChange={setLightingIntensity}
+                  min={-1}
+                  max={1}
+                  step={0.01}
+                  formatValue={(v) => v.toFixed(2)}
+                />
               </div>
             )}
           </div>
@@ -930,14 +1072,17 @@ export function WallImageWorkspace() {
         <div className={styles.canvasColumn}>
           <ImageCanvas
             imageSrc={imageSrc}
-            // Live simulation while still editing (lightingPercent's CSS
-            // filter, chalkBySegmentId/colorBySegmentId's SVG overlays) --
+            // Live simulation while still editing (lightingPercent's
+            // overlay, chalkBySegmentId/colorBySegmentId's SVG overlays) --
             // once Finish Augment lands the real augmented image in
             // imageSrc above, those effects are already baked into its
             // pixels, so continuing to apply them here would double them
             // up. Neutral values past that point: 50 is lightingPercent's
-            // own documented no-op, {} shows no chalk/color fill.
-            lightingPercent={augmentDone ? 50 : lighting}
+            // own documented no-op (see ImageCanvas -- it's still on its
+            // own older 0-100/50-neutral scale, so lightingIntensity's -1
+            // to 1 is converted at this one callsite rather than changing
+            // ImageCanvas itself), {} shows no chalk/color fill.
+            lightingPercent={augmentDone ? 50 : lightingIntensity * 50 + 50}
             segments={segments}
             chalkBySegmentId={augmentDone ? {} : chalkBySegmentId}
             colorBySegmentId={augmentDone ? {} : colorBySegmentId}
@@ -1006,7 +1151,16 @@ export function WallImageWorkspace() {
             closing={augmentDone}
           />
 
-          {showModelSelect && (
+          {/* Hidden for as long as the recognition loader is on screen (see
+              loaderPhase) -- the two dropdowns/Recognition button read as
+              still-live controls sitting right next to it otherwise, when
+              actually a request is already in flight and nothing here is
+              interactive. Reappears on its own once the loader returns to
+              idle -- either the ordinary route (handleGoToRecognition's own
+              success path already flips showModelSelect false before that
+              happens) or, on a failed attempt, so the controls come back
+              and the user can retry. */}
+          {showModelSelect && loaderPhase === "idle" && (
             <div
               className={`${styles.modelSelectPanel} ${modelSelectEntered ? styles.modelSelectPanelIn : ""}`}
             >
@@ -1039,6 +1193,15 @@ export function WallImageWorkspace() {
                   </Button>
                 </div>
               )}
+            </div>
+          )}
+
+          {loaderPhase !== "idle" && (
+            <div className={styles.recognitionLoaderSlot}>
+              <div ref={loaderRef} className={styles.recognitionLoaderClone}>
+                <Wordmark text="ROUTNet" loop paused={loaderPhase === "out"} />
+              </div>
+              <p className={styles.recognitionLoaderText}>Working in progress…</p>
             </div>
           )}
 

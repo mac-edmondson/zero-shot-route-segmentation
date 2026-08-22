@@ -167,7 +167,7 @@ def augment_image(
             ChalkAugmentation(tuple(chalk_targets), tuple(chalk_strengths))
         )
     if request.lighting_percent:
-        augmentations.append(LightingAugmentation(request.lighting_percent / 100))
+        augmentations.append(LightingAugmentation(request.lighting_percent))
     return AugmentationPlan(tuple(augmentations), seed=0).apply(image)
 
 

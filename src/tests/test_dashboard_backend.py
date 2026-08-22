@@ -98,7 +98,7 @@ def test_pipeline_configuration_and_async_workflow() -> None:
         client.post(
             "/image/working/augment",
             json={
-                "lightingPercent": 10,
+                "lightingPercent": 0.1,
                 "segments": [{"segmentId": segment_id, "chalkPercent": 25}],
             },
         ).status_code
