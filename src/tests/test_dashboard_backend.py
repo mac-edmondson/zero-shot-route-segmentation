@@ -68,7 +68,7 @@ def test_pipeline_configuration_and_async_workflow() -> None:
         client.post(
             "/image/working/augment",
             json={
-                "lightingPercent": 10,
+                "lightingPercent": 0.1,
                 "segments": [{"segmentId": segment_id, "chalkPercent": 25}],
             },
         ).status_code
@@ -99,7 +99,7 @@ def test_legacy_multipart_calls_remain_usable() -> None:
         client.post(
             "/image/working/augment",
             json={
-                "lightingPercent": 10,
+                "lightingPercent": 0.1,
                 "segments": [{"segmentId": segment_id, "chalkPercent": 20}],
             },
         ).status_code

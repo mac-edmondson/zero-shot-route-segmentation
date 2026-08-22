@@ -85,6 +85,10 @@ export interface SegmentAugmentation {
 }
 
 export interface AugmentWorkingImageRequest {
+  /** -1 to 1, 0 = neutral/no change -- matches the backend's own
+   * AugmentWorkingImageRequest.lighting_percent range exactly (see
+   * src/backend/schemas.py), so WallImageWorkspace sends its
+   * lightingIntensity state through unconverted. */
   lightingPercent: number;
   segments: SegmentAugmentation[];
 }

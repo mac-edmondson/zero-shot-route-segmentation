@@ -670,11 +670,6 @@ export function ImageCanvas({
               aria-hidden
             />
           )}
-          {zoom > 1 && (
-            <span className={styles.zoomBadge} aria-hidden>
-              {Math.round(zoom * 100)}%
-            </span>
-          )}
           {pickingColor && (
             <span className={styles.pickingBadge}>Click a hold to sample its color</span>
           )}
@@ -786,6 +781,18 @@ export function ImageCanvas({
           </svg>
           <p className={styles.emptyText}>Select a wall image to begin</p>
         </div>
+      )}
+      {imageSrc && zoom > 1 && (
+        // A sibling of .imageWrap, not a child of it -- .imageWrap is what
+        // pan/zoom's transform actually applies to (see the CSS), so a
+        // badge living inside it would scale and slide around right along
+        // with the image instead of staying put. Pinned here, directly
+        // against .box itself, it stays fixed at the container's own
+        // bottom-right corner regardless of how far zoomed/panned the
+        // image inside it currently is.
+        <span className={styles.zoomBadge} aria-hidden>
+          {Math.round(zoom * 100)}%
+        </span>
       )}
     </div>
   );

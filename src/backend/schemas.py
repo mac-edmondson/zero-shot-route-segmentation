@@ -60,7 +60,14 @@ class SegmentAugmentation(BaseModel):
 class AugmentWorkingImageRequest(BaseModel):
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
-    lighting_percent: float = Field(ge=-100, le=100, default=0)
+    # -1 to 1, 0 = neutral/no change -- the same scale and neutral point as
+    # LightingAugmentationParams.intensity (src/pipeline/interfaces/
+    # augmentation.py) itself, which augment_image passes this straight
+    # into unconverted (see src/backend/services/dashboard.py). Named
+    # lighting_percent (not e.g. lighting_intensity) for backward
+    # compatibility with the existing wire field/alias -- only the range
+    # changed, not the field itself.
+    lighting_percent: float = Field(ge=-1, le=1, default=0)
     segments: list[SegmentAugmentation] = Field(default_factory=list)
 
 

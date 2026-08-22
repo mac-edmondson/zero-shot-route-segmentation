@@ -17,6 +17,23 @@ interface Rect {
 
 interface WordmarkProps {
   text: string;
+  /**
+   * Draws the route in on a repeating cycle instead of once-and-settled --
+   * used by WallImageWorkspace's recognition loader, a cloned Wordmark
+   * standing in for "still working" while the backend infers. The climber
+   * (a "topped out"/done pose) doesn't fit that, so it's skipped entirely
+   * in this mode rather than popping in in sync with a cycle that has no
+   * real end.
+   */
+  loop?: boolean;
+  /**
+   * Freezes the loop's animations exactly wherever they currently are --
+   * used while the recognition loader is flying back to the real logo
+   * (see WallImageWorkspace's loaderPhase), so the route/spark aren't
+   * still visibly redrawing/traveling at the same time the whole clone is
+   * moving and fading. Only meaningful alongside loop.
+   */
+  paused?: boolean;
 }
 
 // PAD_X_BASE/RIGHT_PAD_BASE were tuned at REFERENCE_FONT_SIZE and scale with
@@ -68,7 +85,7 @@ function smoothPath(points: Point[]): string {
  * glyphs regardless of font or text changes -- only the summit uses the
  * last character's own box, so it lands precisely at the final letter.
  */
-export function Wordmark({ text }: WordmarkProps) {
+export function Wordmark({ text, loop = false, paused = false }: WordmarkProps) {
   const uid = useId();
   const gradientId = `route-gradient-${uid}`;
   const maskId = `route-mask-${uid}`;
@@ -237,7 +254,14 @@ export function Wordmark({ text }: WordmarkProps) {
       </text>
 
       {ready && solidD && dashedD && summit && (
-        <g className={drawn ? styles.routeIn : undefined}>
+        <g
+          className={[
+            drawn ? (loop ? styles.routeLoop : styles.routeIn) : "",
+            loop && paused ? styles.routePaused : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+        >
           <g className={styles.routeGlow}>
             <g mask={`url(#${maskId})`}>
               <path
@@ -252,7 +276,9 @@ export function Wordmark({ text }: WordmarkProps) {
                 className={styles.routeDashed}
                 style={{ stroke: `url(#${gradientId})` }}
               />
-              {/* A little light that runs the route once the draw-in settles. */}
+              {/* A little light that runs the route once the draw-in settles
+                  (or continuously in loop mode -- this animation is already
+                  its own infinite loop either way, see .spark below). */}
               {drawn && fullD && (
                 <circle
                   className={styles.spark}
@@ -266,18 +292,23 @@ export function Wordmark({ text }: WordmarkProps) {
           </g>
 
           {/*
-            Climber topping out, arms raised. Position (attribute transform)
-            and the pop-in scale (CSS transform) are split across two <g>s
-            -- an SVG element's transform attribute and its CSS transform
-            property don't compose; CSS silently wins and drops the
-            attribute's translate if both land on one node.
+            Climber topping out, arms raised -- a "done" pose, so it's
+            skipped in loop mode (see WordmarkProps.loop) rather than
+            popping in against a draw-in that never actually finishes.
+            Position (attribute transform) and the pop-in scale (CSS
+            transform) are split across two <g>s -- an SVG element's
+            transform attribute and its CSS transform property don't
+            compose; CSS silently wins and drops the attribute's translate
+            if both land on one node.
           */}
-          <g transform={`translate(${summit.x}, ${summit.y})`}>
-            <g className={styles.climber}>
-              <path d="M0 0 L -6.5 -8 M0 0 L -2.5 -10.5" className={styles.climberLine} />
-              <circle cx="3.5" cy="-6.5" r="2.4" className={styles.climberHead} />
+          {!loop && (
+            <g transform={`translate(${summit.x}, ${summit.y})`}>
+              <g className={styles.climber}>
+                <path d="M0 0 L -6.5 -8 M0 0 L -2.5 -10.5" className={styles.climberLine} />
+                <circle cx="3.5" cy="-6.5" r="2.4" className={styles.climberHead} />
+              </g>
             </g>
-          </g>
+          )}
         </g>
       )}
 

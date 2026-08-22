@@ -181,9 +181,13 @@ def augment_image(
             )
 
     if request.lighting_percent:
+        # No /100 here anymore -- lighting_percent is already on the -1 to 1
+        # scale LightingAugmentationParams.intensity expects (see its own
+        # range check in src/pipeline/interfaces/augmentation.py), not the
+        # old -100 to 100 one.
         result = suite.change_lighting(
             result,
-            LightingAugmentationParams(request.lighting_percent / 100),
+            LightingAugmentationParams(request.lighting_percent),
         )
     return result
 
