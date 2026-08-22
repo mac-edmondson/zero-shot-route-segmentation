@@ -1,10 +1,21 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import type { Coordinate, Segment } from "@/lib/api";
 import { Button } from "@/components/button/Button";
 import styles from "./ImageCanvas.module.css";
+
+/** Zoom range for Ctrl+/Ctrl- (see the zoom/pan state below) -- 1 is the
+ * image's normal fit-to-box size, so it also doubles as "no zoom"/the
+ * floor pan gets clamped to. */
+const ZOOM_MIN = 1;
+const ZOOM_MAX = 4;
+const ZOOM_STEP = 0.25;
+
+/** Minimum pointer travel (px) before a mousedown-drag on the image counts
+ * as a pan rather than a click -- see handleImageWrapMouseDown. */
+const PAN_DRAG_THRESHOLD = 4;
 
 /** Chalk fill's opacity at 100% chalkPercent -- kept short of fully opaque
  * so the hold's own outline/fill stays visible underneath even at max. */
@@ -157,8 +168,12 @@ interface ImageCanvasProps {
    * False for a read-only display -- the recognition page's carried-over
    * augmented image, past the point of editing it further. Disables
    * click-to-add-point and hides the numbered segment markers/pending-point
-   * dots, but keeps the lighting filter and chalk overlay showing (those
-   * *are* the augmentation, not editing affordances). Defaults to true.
+   * dots. The lighting filter/chalk overlay props still work whenever
+   * they're passed a non-neutral value -- WallImageWorkspace just stops
+   * doing that once Finish Augment has swapped `imageSrc` for the real
+   * augmented image from the backend (see handleFinishAugment), so those
+   * effects aren't double-applied on top of pixels that already have them
+   * baked in. Defaults to true.
    */
   interactive?: boolean;
   /**
@@ -204,9 +219,128 @@ export function ImageCanvas({
   showHoldOutline = true,
   overlay,
 }: ImageCanvasProps) {
+  // .imageWrap has no height of its own -- it shrink-wraps to the image
+  // (see the CSS) so overlays/markers positioned against it stay pinned to
+  // the actual visible image, not empty letterboxed space around it. But
+  // that means the <img>'s own `max-height: 100%` has nothing definite to
+  // resolve against (a descendant's percentage height doesn't resolve
+  // against an ancestor whose own height is itself auto/content-driven --
+  // classic CSS circular dependency), so the browser silently drops that
+  // constraint and sizes the image from width alone, ignoring available
+  // vertical space entirely. Invisible whenever width happens to be the
+  // tighter bound (the common case), but the moment height is the tighter
+  // one -- e.g. this box at its full width, before any holds exist, see
+  // showFullWidthCanvas in WallImageWorkspace -- the image overflows its
+  // own wrapper and .box's overflow:hidden silently crops it top/bottom,
+  // looking exactly like the old cover behavior despite object-fit:
+  // contain. Recording the image's real aspect ratio once it loads and
+  // setting it explicitly (below) sidesteps the whole percentage-
+  // resolution problem: aspect-ratio + max-width + max-height together let
+  // the browser solve the box's size directly, with no child percentage
+  // involved.
+  const [imageAspectRatio, setImageAspectRatio] = useState<number | null>(null);
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [streamReady, setStreamReady] = useState(false);
+
+  // --- Zoom/pan -------------------------------------------------------
+  // Scales/translates .imageWrap as a whole (see the CSS) -- the image,
+  // polygon overlay, chalk fill, and markers are all siblings inside it,
+  // so transforming the wrapper keeps every one of them in registration
+  // with the image at any zoom level without recomputing coordinates.
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+  const imageWrapRef = useRef<HTMLDivElement>(null);
+  // Whether the pointer is currently over the box -- gates the Ctrl+/Ctrl-
+  // zoom shortcut below so it doesn't fight the browser's own page-zoom
+  // when the user is scrolled elsewhere on the page.
+  const hoveringRef = useRef(false);
+  // Set on a real drag (see handleImageWrapMouseDown) so the click that
+  // fires on mouseup doesn't also get read as an add-point/color-pick
+  // click.
+  const suppressClickRef = useRef(false);
+
+  // Fresh image -- start over at no zoom/pan rather than carrying over
+  // whatever the previous image was left at. Adjusted during render
+  // (React's documented way to reset state on a prop change) rather than
+  // in an effect, so it takes effect before that first render paints
+  // instead of flashing the old zoom/pan for a frame first.
+  const [prevImageSrc, setPrevImageSrc] = useState(imageSrc);
+  if (imageSrc !== prevImageSrc) {
+    setPrevImageSrc(imageSrc);
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  }
+
+  /** Keeps pan inside the bounds a given zoom level allows -- shared by the
+   * keydown handler below and handleImageWrapMouseDown's drag, both of
+   * which need it clamped against imageWrapRef's *unscaled* layout box
+   * (offsetWidth/Height ignore the wrapper's own CSS transform, so this
+   * reads the same regardless of the zoom currently applied). */
+  function clampPan(pan: { x: number; y: number }, forZoom: number) {
+    if (forZoom <= 1) return { x: 0, y: 0 };
+    const wrap = imageWrapRef.current;
+    if (!wrap) return pan;
+    const maxX = ((forZoom - 1) * wrap.offsetWidth) / 2;
+    const maxY = ((forZoom - 1) * wrap.offsetHeight) / 2;
+    return { x: Math.min(maxX, Math.max(-maxX, pan.x)), y: Math.min(maxY, Math.max(-maxY, pan.y)) };
+  }
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (!hoveringRef.current) return;
+      if (!(event.ctrlKey || event.metaKey)) return;
+      if (event.key !== "+" && event.key !== "=" && event.key !== "-" && event.key !== "_") return;
+      event.preventDefault();
+      const zoomingOut = event.key === "-" || event.key === "_";
+      const nextZoom = zoomingOut
+        ? Math.max(ZOOM_MIN, +(zoom - ZOOM_STEP).toFixed(2))
+        : Math.min(ZOOM_MAX, +(zoom + ZOOM_STEP).toFixed(2));
+      setZoom(nextZoom);
+      setPan((current) => clampPan(current, nextZoom));
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+    // Re-bound on every zoom change so the handler always steps from the
+    // current zoom rather than a stale closure over the value from when
+    // the listener was first attached.
+  }, [zoom]);
+
+  /** Drag-to-pan, only meaningful once zoomed in. Distinguishes a pan from
+   * a plain click by movement distance -- short of PAN_DRAG_THRESHOLD it's
+   * left alone so a click still adds a point/samples a color as normal;
+   * past it, suppressClickRef swallows the click that mouseup triggers. */
+  function handleImageWrapMouseDown(event: React.MouseEvent) {
+    if (zoom <= 1 || event.button !== 0) return;
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const startPan = pan;
+    let dragged = false;
+
+    function handleMove(moveEvent: MouseEvent) {
+      const dx = moveEvent.clientX - startX;
+      const dy = moveEvent.clientY - startY;
+      if (!dragged && Math.hypot(dx, dy) > PAN_DRAG_THRESHOLD) {
+        dragged = true;
+        setIsPanning(true);
+      }
+      if (!dragged) return;
+      setPan(clampPan({ x: startPan.x + dx, y: startPan.y + dy }, zoom));
+    }
+    function handleUp() {
+      window.removeEventListener("mousemove", handleMove);
+      window.removeEventListener("mouseup", handleUp);
+      if (dragged) {
+        suppressClickRef.current = true;
+        setIsPanning(false);
+      }
+    }
+    window.addEventListener("mousemove", handleMove);
+    window.addEventListener("mouseup", handleUp);
+  }
+  // ---------------------------------------------------------------------
 
   // The live "drop" cursor while picking a color (see the JSX below and
   // .colorDrop) -- x/y are pixels relative to .imageWrap, color is whatever
@@ -320,7 +454,32 @@ export function ImageCanvas({
     }, "image/png");
   }
 
+  // Mask-RCNN's contours come back effectively pixel-precise -- hundreds to
+  // low-thousands of points per hold, unsimplified -- so serializing them
+  // into SVG's `points` format is real work, not a rounding error. Doing
+  // it inline in JSX (the old code) reran that work, for every segment,
+  // on every render -- including the high-frequency ones that have
+  // nothing to do with the polygons themselves: color-pick hover and pan
+  // both setState on every mousemove. With enough holds/vertices that adds
+  // up to a main-thread-blocking amount of string-building 60+ times a
+  // second while dragging. Memoized here so it only redoes the work when
+  // `segments` itself actually changes (a hold added/removed/redetected),
+  // not on every unrelated re-render.
+  const polygonPointsById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const segment of segments) {
+      map.set(segment.segmentId, segment.polygon.map((p) => `${p.x},${p.y}`).join(" "));
+    }
+    return map;
+  }, [segments]);
+
   function handleImageClick(event: React.MouseEvent<HTMLImageElement>) {
+    if (suppressClickRef.current) {
+      // This click is the tail end of a pan drag, not a real click --
+      // see handleImageWrapMouseDown.
+      suppressClickRef.current = false;
+      return;
+    }
     if (!interactive) return;
     const bounds = event.currentTarget.getBoundingClientRect();
     const coordinate: Coordinate = {
@@ -343,7 +502,15 @@ export function ImageCanvas({
   }
 
   return (
-    <div className={styles.box}>
+    <div
+      className={styles.box}
+      onMouseEnter={() => {
+        hoveringRef.current = true;
+      }}
+      onMouseLeave={() => {
+        hoveringRef.current = false;
+      }}
+    >
       {webcamActive ? (
         <>
           <video ref={videoRef} className={styles.video} autoPlay playsInline muted />
@@ -365,11 +532,40 @@ export function ImageCanvas({
           )}
         </>
       ) : imageSrc ? (
-        <div className={styles.imageWrap}>
+        <div
+          ref={imageWrapRef}
+          className={styles.imageWrap}
+          style={{
+            transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+            // String, not a bare number -- React's unitless-property
+            // allowlist for auto-appending "px" to numeric style values
+            // predates aspect-ratio, so a raw number here risks becoming
+            // the invalid (and silently ignored) "1.502px".
+            aspectRatio: imageAspectRatio != null ? String(imageAspectRatio) : undefined,
+          }}
+          onMouseDown={handleImageWrapMouseDown}
+        >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={imageSrc}
             alt="Working climbing wall"
+            // Browsers make <img> natively draggable (HTML5 drag-and-drop) --
+            // left unchecked, holding and moving the mouse here starts the
+            // browser's own drag-ghost operation instead of our pan, which
+            // swallows mousemove until release (see handleImageWrapMouseDown
+            // above). draggable=false plus swallowing dragstart disables that
+            // so plain mouse-tracking drives the pan instead.
+            draggable={false}
+            onDragStart={(event) => event.preventDefault()}
+            // Captures the real aspect ratio for .imageWrap's inline style
+            // above -- see imageAspectRatio's own comment for why that's
+            // needed at all.
+            onLoad={(event) => {
+              const { naturalWidth, naturalHeight } = event.currentTarget;
+              if (naturalWidth > 0 && naturalHeight > 0) {
+                setImageAspectRatio(naturalWidth / naturalHeight);
+              }
+            }}
             className={[
               styles.image,
               !interactive ? styles.imageStatic : "",
@@ -377,11 +573,23 @@ export function ImageCanvas({
             ]
               .filter(Boolean)
               .join(" ")}
-            style={{ filter: `brightness(${1 + ((lightingPercent - 50) / 50) * 0.9})` }}
+            style={{
+              filter: `brightness(${1 + ((lightingPercent - 50) / 50) * 0.9})`,
+              // Overrides .image's cursor once zoomed in -- panning takes
+              // over as the primary drag gesture at that point, so the
+              // crosshair/none cursors that signal click-to-add-point or
+              // color-picking give way to the standard grab affordance.
+              cursor: zoom > 1 ? (isPanning ? "grabbing" : "grab") : undefined,
+            }}
             onClick={handleImageClick}
             onMouseMove={handleImageMouseMove}
             onMouseLeave={handleImageMouseLeave}
           />
+          {zoom > 1 && (
+            <span className={styles.zoomBadge} aria-hidden>
+              {Math.round(zoom * 100)}%
+            </span>
+          )}
           {pickingColor && (
             <span className={styles.pickingBadge}>Click a hold to sample its color</span>
           )}
@@ -422,7 +630,7 @@ export function ImageCanvas({
                     <polygon
                       key={segment.segmentId}
                       className={colorHex ? styles.polygonShapeColored : styles.polygonShape}
-                      points={segment.polygon.map((p) => `${p.x},${p.y}`).join(" ")}
+                      points={polygonPointsById.get(segment.segmentId)}
                       style={colorHex ? ({ "--hold-color": colorHex } as CSSProperties) : undefined}
                     />
                   );
@@ -434,7 +642,7 @@ export function ImageCanvas({
                   <polygon
                     key={`chalk-${segment.segmentId}`}
                     className={styles.chalkShape}
-                    points={segment.polygon.map((p) => `${p.x},${p.y}`).join(" ")}
+                    points={polygonPointsById.get(segment.segmentId)}
                     style={{ fillOpacity: (chalkPercent / 100) * MAX_CHALK_OPACITY }}
                   />
                 );

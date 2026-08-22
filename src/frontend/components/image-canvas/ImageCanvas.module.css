@@ -59,6 +59,14 @@
      it -- see .image below. */
   max-width: 100%;
   max-height: 100%;
+  /* Ctrl+/Ctrl- zoom and drag-to-pan (see ImageCanvas.tsx) scale/translate
+     this wrapper as a whole rather than the <img> alone, so the polygon
+     overlay/markers/chalk fill -- all plain siblings of the image inside
+     here -- move and scale in lockstep with it instead of drifting out of
+     registration. No transition on transform: pan needs to track the
+     pointer 1:1 with zero lag, and a transition would apply to both
+     properties since they share one inline style. */
+  transform-origin: center center;
 }
 
 .image {
@@ -77,6 +85,13 @@
   cursor: crosshair;
   display: block;
   transition: filter var(--dur-fast) linear;
+  /* Safari doesn't always respect the <img draggable={false}> attribute on
+     its own (see ImageCanvas.tsx) -- this is the CSS-level version of the
+     same "don't start a native image drag on mousedown" guard, needed so
+     pan tracks the pointer instead of the browser's drag-ghost stealing
+     mousemove. */
+  -webkit-user-drag: none;
+  user-select: none;
 }
 
 /* Read-only display (interactive=false, e.g. the recognition page's
@@ -243,6 +258,25 @@
   background: rgba(8, 9, 11, 0.65);
   backdrop-filter: blur(6px);
   border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: var(--radius-full);
+  padding: 0.3rem 0.65rem;
+  pointer-events: none;
+}
+
+/* Shown only while zoomed in (see ImageCanvas.tsx) -- bottom-right so it
+ * doesn't compete with .liveBadge/.pickingBadge up top or the segment
+ * markers scattered wherever the holds are. Purely informational: confirms
+ * the Ctrl+/Ctrl- shortcut landed and by how much. */
+.zoomBadge {
+  position: absolute;
+  bottom: 1rem;
+  right: 1rem;
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--foreground);
+  background: rgba(8, 9, 11, 0.65);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--border);
   border-radius: var(--radius-full);
   padding: 0.3rem 0.65rem;
   pointer-events: none;
