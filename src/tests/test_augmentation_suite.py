@@ -73,6 +73,24 @@ def test_add_chalk_uses_smooth_patchy_texture() -> None:
     assert adjacent_difference < 4
 
 
+def test_add_chalk_preserves_black_hardware() -> None:
+    values = np.full((96, 96, 3), 120, dtype=np.uint8)
+    values[48, 48] = 0
+    image = PILImage.fromarray(values, mode="RGB")
+    polygon = Polygon(
+        (
+            Coordinate(1, 1),
+            Coordinate(94, 1),
+            Coordinate(94, 94),
+            Coordinate(1, 94),
+        )
+    )
+
+    result = add_chalk(image, [polygon], [1], seed=0)
+    assert result.getpixel((48, 48)) == (0, 0, 0)
+    assert result.getpixel((47, 48))[0] > 200
+
+
 def test_change_color_preserves_target_lightness() -> None:
     image = _image()
     result = change_color(image, [_polygon()], [RGBColor(220, 20, 20)])
@@ -82,6 +100,15 @@ def test_change_color_preserves_target_lightness() -> None:
     assert light[0] > light[1] and light[0] > light[2]
     assert sum(light) > sum(dark)
     assert result.getpixel((0, 0)) == image.getpixel((0, 0))
+
+
+def test_change_color_recenters_white_hold_lightness() -> None:
+    image = PILImage.new("RGB", (8, 8), (240, 240, 240))
+    target = RGBColor(20, 100, 220)
+
+    result = change_color(image, [_polygon()], [target])
+
+    assert result.getpixel((2, 2)) == (20, 100, 220)
 
 
 def test_lighting_uses_the_frontend_brightness_scale() -> None:
