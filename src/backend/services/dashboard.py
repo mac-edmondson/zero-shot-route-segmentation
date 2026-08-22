@@ -31,6 +31,7 @@ try:
         route_discriminator_factory,
     )
     from ...pipeline.route_discriminator_pipeline import RouteDiscriminatorPipeline
+    from ...pipeline.utility.sam3_ui import SAMWrapper
 except ImportError:  # Support `PYTHONPATH=src` development imports.
     from pipeline.hold_detector.hold_detector_factory import hold_detector_factory
     from pipeline.interfaces.data_models import (
@@ -52,6 +53,7 @@ except ImportError:  # Support `PYTHONPATH=src` development imports.
         route_discriminator_factory,
     )
     from pipeline.route_discriminator_pipeline import RouteDiscriminatorPipeline
+    from pipeline.utility.sam3_ui import SAMWrapper
 from ..schemas import (
     AugmentWorkingImageRequest,
     Coordinate,
@@ -61,7 +63,8 @@ from ..schemas import (
     RouteResult,
     SegmentResult,
 )
-from .mock_segmentation import mock_segment_point
+
+_sam_wrapper = SAMWrapper()
 
 
 def decode_image(raw: bytes) -> PILImage.Image:
@@ -87,18 +90,36 @@ def new_image_id() -> str:
     return str(uuid.uuid4())
 
 
-def detect_segments(coordinates: Sequence[Coordinate]) -> list[SegmentResult]:
-    """Create mock segments for the requested normalized points."""
-    # TODO: This should be actually implemented and the mock_segmentation
-    # service then removed. This can't be implemented until a proper SAM3
-    # segmenter is in place though.
-    return [
-        SegmentResult(
-            segment_id=f"seg_{uuid.uuid4().hex[:12]}",
-            polygon=mock_segment_point(coordinate),
+def detect_segments(
+    image: PILImage.Image, coordinates: Sequence[Coordinate]
+) -> list[SegmentResult]:
+    """Segment each normalized click with SAM3."""
+    if _sam_wrapper.model is None or _sam_wrapper.processor is None:
+        _sam_wrapper.load_model()
+    masks = _sam_wrapper.generate_mask(
+        image, [{"x": coordinate.x, "y": coordinate.y} for coordinate in coordinates]
+    )
+    polygons = _sam_wrapper.to_polygons(masks)
+    if len(polygons) != len(coordinates):
+        raise RuntimeError("SAM3 returned an unexpected number of masks.")
+
+    width, height = image.size
+    results = []
+    for points in polygons:
+        if len(points) < 3:
+            raise ValueError("SAM3 returned an empty or degenerate mask.")
+        results.append(
+            SegmentResult(
+                segment_id=f"seg_{uuid.uuid4().hex[:12]}",
+                polygon=Polygon(
+                    points=[
+                        Coordinate(x=x / max(width - 1, 1), y=y / max(height - 1, 1))
+                        for x, y in points
+                    ]
+                ),
+            )
         )
-        for coordinate in coordinates
-    ]
+    return results
 
 
 def _pixel_polygon(polygon: Polygon, image: PILImage.Image) -> PixelPolygon:

@@ -9,7 +9,8 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 from backend.main import app
-from backend.routes import pipeline_inference
+from backend.routes import pipeline_inference, segmentation
+from backend.schemas import Coordinate, Polygon, SegmentResult
 from backend.session_store import SessionState, sessions
 
 
@@ -58,8 +59,24 @@ def test_sessions_keep_working_images_isolated() -> None:
     assert first.cookies.get("session_id") != second.cookies.get("session_id")
 
 
-def test_pipeline_configuration_and_async_workflow() -> None:
+def test_pipeline_configuration_and_async_workflow(monkeypatch) -> None:
     """Exercise the canonical configuration-to-inference workflow."""
+
+    def segment(_image, _coordinates):
+        return [
+            SegmentResult(
+                segment_id="seg_test",
+                polygon=Polygon(
+                    points=[
+                        Coordinate(x=0, y=0),
+                        Coordinate(x=1, y=0),
+                        Coordinate(x=0, y=1),
+                    ]
+                ),
+            )
+        ]
+
+    monkeypatch.setattr(segmentation, "detect_segments", segment)
     sessions.clear()
     client = TestClient(app)
     upload = {"image": ("wall.png", _image_bytes(), "image/png")}
