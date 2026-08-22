@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Response
@@ -12,12 +13,16 @@ from ..services.dashboard import infer, model_error
 from ..session_store import JobState, SessionState
 from ._common import _conflict
 
+logger = logging.getLogger(__name__)
+
+
 router = APIRouter()
 
 
 def _finish_inference_job(
     session: SessionState,
     generation: int,
+    image_id: str | None,
     image: Any,
     hold_detector: str,
     route_classifier: str,
@@ -26,6 +31,13 @@ def _finish_inference_job(
     try:
         result = infer(image, hold_detector, route_classifier)
     except Exception as exc:
+        logger.exception(
+            "inference failed image_id=%s generation=%d hold_detector=%s route_classifier=%s",
+            image_id,
+            generation,
+            hold_detector,
+            route_classifier,
+        )
         with session.lock:
             if generation == session.generation:
                 session.inference_job = JobState("failed", model_error(exc))
@@ -64,6 +76,7 @@ def start_inference(
         if session.working_image is None:
             raise _conflict("set a working image before inference")
         generation = session.generation
+        image_id = session.working_image_id
         working_image = session.working_image.copy()
         selected_hold = session.hold_detector
         selected_route = session.route_classifier
@@ -72,7 +85,15 @@ def start_inference(
         _finish_inference_job,
         session,
         generation,
+        image_id,
         working_image,
+        selected_hold,
+        selected_route,
+    )
+    logger.info(
+        "inference queued image_id=%s generation=%d hold_detector=%s route_classifier=%s",
+        image_id,
+        generation,
         selected_hold,
         selected_route,
     )

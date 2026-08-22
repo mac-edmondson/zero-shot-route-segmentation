@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import io
+import logging
 
 from fastapi.testclient import TestClient
 from PIL import Image
 
 from backend.main import app
-from backend.session_store import sessions
+from backend.routes import pipeline_inference
+from backend.session_store import SessionState, sessions
 
 
 def _image_bytes() -> bytes:
@@ -16,6 +18,28 @@ def _image_bytes() -> bytes:
     buffer = io.BytesIO()
     Image.new("RGB", (64, 64), (80, 90, 100)).save(buffer, format="PNG")
     return buffer.getvalue()
+
+
+def test_inference_failure_logs_traceback(monkeypatch, caplog) -> None:
+    """Retain inference tracebacks without changing the client failure state."""
+    image_id = "fixed-image-id"
+    session = SessionState(working_image_id=image_id)
+
+    def fail_inference(*_args: object) -> None:
+        raise RuntimeError("inference exploded")
+
+    monkeypatch.setattr(pipeline_inference, "infer", fail_inference)
+
+    with caplog.at_level(logging.ERROR, logger=pipeline_inference.__name__):
+        pipeline_inference._finish_inference_job(
+            session, 0, image_id, object(), "Mock", "Mock"
+        )
+
+    assert session.inference_job.status == "failed"
+    record = caplog.records[-1]
+    assert record.exc_info is not None
+    assert "inference failed" in record.getMessage()
+    assert image_id in record.getMessage()
 
 
 def test_sessions_keep_working_images_isolated() -> None:

@@ -1,5 +1,7 @@
 """Asynchronous working-image segmentation endpoints."""
 
+import logging
+
 from fastapi import APIRouter, BackgroundTasks, Depends, Response
 
 from ..dependencies import get_session
@@ -8,18 +10,25 @@ from ..services.dashboard import detect_segments, model_error
 from ..session_store import JobState, SessionState
 from ._common import _conflict
 
+logger = logging.getLogger(__name__)
+
+
 router = APIRouter()
 
 
 def _finish_segment_job(
     session: SessionState,
     generation: int,
+    image_id: str | None,
     coordinates: list[Coordinate],
 ) -> None:
     """Store detected segments unless the image generation changed."""
     try:
         result = detect_segments(coordinates)
     except Exception as exc:
+        logger.exception(
+            "segmentation failed image_id=%s generation=%d", image_id, generation
+        )
         with session.lock:
             if generation == session.generation:
                 session.segment_job = JobState("failed", model_error(exc))
@@ -45,9 +54,16 @@ def start_segmentation(
         if session.working_image is None:
             raise _conflict("set a working image before segmenting")
         generation = session.generation
+        image_id = session.working_image_id
         session.segment_job = JobState("processing")
     background_tasks.add_task(
-        _finish_segment_job, session, generation, body.coordinates
+        _finish_segment_job, session, generation, image_id, body.coordinates
+    )
+    logger.info(
+        "segmentation queued image_id=%s generation=%d point_count=%d",
+        image_id,
+        generation,
+        len(body.coordinates),
     )
     return Response(status_code=202)
 
