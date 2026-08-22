@@ -12,7 +12,7 @@ The system is organized around a two-stage perception pipeline:
 
 [RouteDiscriminatorPipeline](interfaces/route-discriminator-pipeline.md) composes the two while deliberately exposing the underlying components for composability within the demo dashboard and evaluation suite.
 
-[AugmentationSuite](interfaces/augmentation-suite.md) and [DataPreprocessingPipeline](interfaces/data-preprocessing-pipeline.md) create clean/distorted evaluation inputs. The [Dashboard Backend](interfaces/dashboard-backend.md) invokes the same core pipeline and evaluation interfaces used by offline tooling; the [Dashboard Frontend](interfaces/dashboard-frontend.md) is a client of that backend.
+[Image augmentations](interfaces/augmentation-suite.md) and [DataPreprocessingPipeline](interfaces/data-preprocessing-pipeline.md) create clean/distorted evaluation inputs. The [Dashboard Backend](interfaces/dashboard-backend.md) invokes the same core pipeline and evaluation interfaces used by offline tooling; the [Dashboard Frontend](interfaces/dashboard-frontend.md) is a client of that backend.
 
 ```mermaid
 flowchart LR
@@ -87,6 +87,6 @@ TODO: Remove me
 1. Stabilize [shared data models](interfaces/data-models.md).
 2. Implement protocols and factories for [HoldDetector](interfaces/hold-detector.md), [HoldDetectorFactory](interfaces/hold-detector-factory.md), [RouteDiscriminator](interfaces/route-discriminator.md), and [RouteDiscriminatorFactory](interfaces/route-discriminator-factory.md).
 3. Compose them in [RouteDiscriminatorPipeline](interfaces/route-discriminator-pipeline.md).
-4. Implement [AugmentationSuite](interfaces/augmentation-suite.md) and [DataPreprocessingPipeline](interfaces/data-preprocessing-pipeline.md).
+4. Implement [image augmentations](interfaces/augmentation-suite.md) and [DataPreprocessingPipeline](interfaces/data-preprocessing-pipeline.md).
 5. Implement [EvaluationSuite](interfaces/evaluation-suite.md).
 6. Put [Dashboard Backend](interfaces/dashboard-backend.md) and [Dashboard Frontend](interfaces/dashboard-frontend.md) over the stable pipeline/evaluation contracts.

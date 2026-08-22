@@ -1,88 +1,60 @@
-# AugmentationSuite Interface
-
-TODO: Port to code and clean
+# Image Augmentations
 
 **Depends on:** [Shared Data Models](data-models.md)
-**Consumed by:** [DataPreprocessingPipeline](data-preprocessing-pipeline.md), optionally [Dashboard Backend](dashboard-backend.md)
+**Consumed by:** [DataPreprocessingPipeline](data-preprocessing-pipeline.md), [Dashboard Backend](dashboard-backend.md)
 
-## 1. Responsibility
+## Responsibility
 
-Describe and apply controlled image distortions so evaluation can compare clean and distorted inputs. The source board specifically calls out lighting changes, chalk contamination, and color changes.
+Apply deterministic evaluation distortions without mutating source images.
 
-## 2. Core types
+## API
+
+`src/pipeline/preprocessing/augmentation_suite.py` owns both recipes and operations:
 
 ```python
-from dataclasses import dataclass
-from typing import Any, Mapping, Protocol, Sequence
-from .data_models import Image, Polygon, RGBColor
+@dataclass(frozen=True)
+class ChalkAugmentation:
+    targets: tuple[Polygon | Hold, ...]
+    strengths: tuple[float, ...]  # each in [0, 1]
 
-class Augmentation(Protocol):
-    @property
-    def name(self) -> str: ...
+@dataclass(frozen=True)
+class ColorAugmentation:
+    targets: tuple[Polygon | Hold, ...]
+    colors: tuple[RGBColor, ...]
 
-    def apply(self, image: Image, *, seed: int | None = None) -> Image: ...
+@dataclass(frozen=True)
+class LightingAugmentation:
+    strength: float  # in [-1, 1]
 
 @dataclass(frozen=True)
 class AugmentationPlan:
-    augmentations: tuple[Augmentation, ...]
+    augmentations: tuple[ChalkAugmentation | ColorAugmentation | LightingAugmentation, ...]
     seed: int | None = None
+
+    def apply(self, image: Image) -> Image: ...
+
+
+def add_chalk(
+    image: Image,
+    targets: Sequence[Polygon | Hold],
+    strengths: Sequence[float],
+    *,
+    seed: int | None = None,
+) -> Image: ...
+
+
+def change_color(
+    image: Image,
+    targets: Sequence[Polygon | Hold],
+    colors: Sequence[RGBColor],
+) -> Image: ...
+
+
+def change_lighting(image: Image, strength: float) -> Image: ...
 ```
 
-`Augmentation`/`AugmentationPlan` are a proposed normalization of the whiteboard's “augmentation” values.
+Recipes execute in plan order. A seeded plan derives a distinct deterministic chalk texture for each chalk recipe. Chalk and colour target matching polygons/holds; colour retains per-pixel lightness while applying the requested hue and saturation. Lighting applies globally: `-1` is black, `0` unchanged, and `1` white.
 
-## 3. Suite API
+## Provenance and mutation
 
-```python
-class AugmentationSuite:
-    def augment(
-        self,
-        images: Sequence[Image],
-        augmentations: Sequence[Augmentation] | None = None,
-        *,
-        seed: int | None = None,
-    ) -> AugmentationPlan: ...
-
-    def change_lighting(
-        self,
-        polygons: Sequence[Polygon] | None = None,
-        *,
-        intensity: float | None = None,
-    ) -> Augmentation: ...
-
-    def add_chalk(
-        self,
-        polygons: Sequence[Polygon] | None = None,
-        *,
-        intensity: float | None = None,
-    ) -> Augmentation: ...
-
-    def change_color(
-        self,
-        polygons: Sequence[Polygon] | None = None,
-        *,
-        color: RGBColor | None = None,
-        intensity: float | None = None,
-    ) -> Augmentation: ...
-
-    def materialize(
-        self,
-        images: Sequence[Image],
-        plan: AugmentationPlan,
-    ) -> list[Image]: ...
-```
-
-The exact `intensity` semantics and whether augmentation targets are polygons, holds, or whole images were not fully specified on the board. They are therefore parameterized but remain an [open question](../decisions/open-questions.md#augmentation-parameters).
-
-## 4. Determinism and provenance
-
-For evaluation, the suite SHOULD support a deterministic seed. Materialized images SHOULD retain source/parent IDs and augmentation metadata when wrapped as `ImageRecord`s from [data-models.md](data-models.md).
-
-Two calls using the same source image, augmentation configuration, and seed SHOULD produce identical outputs unless the augmentation explicitly documents nondeterministic behavior.
-
-## 5. Mutation
-
-Augmentations MUST NOT mutate caller-owned source images in place. unless the concrete image type and implementation clearly document copy-on-write semantics. The safer default is to return new image values.
-
-## 6. Relationship to preprocessing
-
-[DataPreprocessingPipeline](data-preprocessing-pipeline.md) decides **when** augmentations are applied (materialized ahead of time vs. on the fly). `AugmentationSuite` decides **how** a requested augmentation is applied.
+`DataPreprocessingPipeline` decides when plans run and records their seed/recipes with derived `ImageRecord`s. Every operation returns a new RGB image; inputs are never mutated.

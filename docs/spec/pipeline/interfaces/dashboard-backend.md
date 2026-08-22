@@ -1,6 +1,6 @@
 # Dashboard Backend API
 
-**Depends on:** [RouteDiscriminatorPipeline](route-discriminator-pipeline.md), [EvaluationSuite](evaluation-suite.md), optionally [AugmentationSuite](augmentation-suite.md)
+**Depends on:** [RouteDiscriminatorPipeline](route-discriminator-pipeline.md), [EvaluationSuite](evaluation-suite.md), optionally [image augmentations](augmentation-suite.md)
 **Consumed by:** [Dashboard Frontend](dashboard-frontend.md)
 
 **Note: While this is called a spec, what is defined in this document is not final and may not be implemented exactly as described. This is more of a rough outline defined for initial collaboration.***
@@ -75,6 +75,52 @@ None specified.
 
 * `hold_detector`: string (allowed values as listed in `available_configs`)
 * `route_classifier`: string (allowed values as listed in `available_configs`)
+
+---
+
+### Pipeline Inferrence
+
+These endpoints are used to utilize the pipeline for inference.
+
+#### `POST /pipeline/infer/working`
+
+Starts inference on the current working image.
+
+#### Request body
+
+None specified.
+
+#### Response
+
+###### Status Code(s): `202 Accepted`, `409 Conflict`
+
+Returns immediately after the inference request is accepted. The frontend must poll the corresponding GET endpoint to retrieve the inferred routes.
+
+###### Body
+
+None specified.
+
+---
+
+#### `GET /pipeline/infer/working`
+
+Returns the current inference state and result.
+
+##### Request body
+
+None specified.
+
+##### Response
+
+###### Status Code(s): `200 OK`
+
+The frontend can poll this endpoint until `status` becomes `"completed"` or `"failed"`.
+
+###### Body
+
+* `routes`: list of routes, where each route is itself a list of holds.
+* `status`: `"processing"`, `"completed"`, or `"failed"`.
+* `error`: error information when `status` is `"failed"`; otherwise omitted.
 
 ---
 
@@ -214,45 +260,3 @@ None specified.
 ###### Body
 
 None specified.
-
----
-
-#### `POST /pipeline/infer/working`
-
-Starts inference on the current working image.
-
-#### Request body
-
-None specified.
-
-#### Response
-
-###### Status Code(s): `202 Accepted`, `409 Conflict`
-
-Returns immediately after the inference request is accepted. The frontend must poll the corresponding GET endpoint to retrieve the inferred routes.
-
-###### Body
-
-None specified.
-
----
-
-### `GET /pipeline/infer/working`
-
-Returns the current inference state and result.
-
-#### Request body
-
-None specified.
-
-#### Response
-
-###### Status Code(s): `200 OK`
-
-The frontend can poll this endpoint until `status` becomes `"completed"` or `"failed"`.
-
-###### Body
-
-* `routes`: list of routes, where each route is itself a list of holds.
-* `status`: `"processing"`, `"completed"`, or `"failed"`.
-* `error`: error information when `status` is `"failed"`; otherwise omitted.

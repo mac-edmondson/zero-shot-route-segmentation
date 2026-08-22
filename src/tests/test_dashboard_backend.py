@@ -1,21 +1,49 @@
+"""HTTP contract tests for the dashboard backend."""
+
 from __future__ import annotations
 
 import io
+import logging
 
 from fastapi.testclient import TestClient
 from PIL import Image
 
 from backend.main import app
-from backend.session_store import sessions
+from backend.routes import pipeline_inference
+from backend.session_store import SessionState, sessions
 
 
 def _image_bytes() -> bytes:
+    """Build a valid in-memory PNG upload."""
     buffer = io.BytesIO()
     Image.new("RGB", (64, 64), (80, 90, 100)).save(buffer, format="PNG")
     return buffer.getvalue()
 
 
+def test_inference_failure_logs_traceback(monkeypatch, caplog) -> None:
+    """Retain inference tracebacks without changing the client failure state."""
+    image_id = "fixed-image-id"
+    session = SessionState(working_image_id=image_id)
+
+    def fail_inference(*_args: object) -> None:
+        raise RuntimeError("inference exploded")
+
+    monkeypatch.setattr(pipeline_inference, "infer", fail_inference)
+
+    with caplog.at_level(logging.ERROR, logger=pipeline_inference.__name__):
+        pipeline_inference._finish_inference_job(
+            session, 0, image_id, object(), "Mock", "Mock"
+        )
+
+    assert session.inference_job.status == "failed"
+    record = caplog.records[-1]
+    assert record.exc_info is not None
+    assert "inference failed" in record.getMessage()
+    assert image_id in record.getMessage()
+
+
 def test_sessions_keep_working_images_isolated() -> None:
+    """Each browser cookie receives independent image state."""
     sessions.clear()
     first, second = TestClient(app), TestClient(app)
     upload = {"image": ("wall.png", _image_bytes(), "image/png")}
@@ -31,6 +59,7 @@ def test_sessions_keep_working_images_isolated() -> None:
 
 
 def test_pipeline_configuration_and_async_workflow() -> None:
+    """Exercise the canonical configuration-to-inference workflow."""
     sessions.clear()
     client = TestClient(app)
     upload = {"image": ("wall.png", _image_bytes(), "image/png")}
@@ -46,11 +75,12 @@ def test_pipeline_configuration_and_async_workflow() -> None:
     assert (
         client.put(
             "/pipeline",
-            json={"hold_detector": "Mock", "route_classifier": "Mock"},
+            json={"holdDetector": "Mock", "routeClassifier": "Mock"},
         ).status_code
         == 200
     )
     assert client.put("/image/working", files=upload).status_code == 200
+    original_image = client.get("/image/working").json()["image"]
 
     assert (
         client.post(
@@ -74,7 +104,9 @@ def test_pipeline_configuration_and_async_workflow() -> None:
         ).status_code
         == 202
     )
-    assert client.get("/image/working").json()["status"] == "completed"
+    augmented = client.get("/image/working").json()
+    assert augmented["status"] == "completed"
+    assert augmented["image"] != original_image
 
     assert client.post("/pipeline/infer/working").status_code == 202
     result = client.get("/pipeline/infer/working").json()
@@ -82,33 +114,26 @@ def test_pipeline_configuration_and_async_workflow() -> None:
     assert "inference_metrics" in result
 
 
-def test_legacy_multipart_calls_remain_usable() -> None:
+def test_removed_legacy_routes_use_retained_async_inference() -> None:
+    """Assert removed legacy calls cannot restore synchronous inference."""
     sessions.clear()
     client = TestClient(app)
     upload = {"image": ("wall.png", _image_bytes(), "image/png")}
 
-    detected = client.post(
-        "/image/working/segments",
-        files=upload,
-        data={"all_points_x": "[0.5]", "all_points_y": "[0.5]"},
-    )
-    assert detected.status_code == 200
-    segment_id = detected.json()["segments"][0]["segment_id"]
-
     assert (
         client.post(
-            "/image/working/augment",
-            json={
-                "lightingPercent": 0.1,
-                "segments": [{"segmentId": segment_id, "chalkPercent": 20}],
-            },
+            "/image/working/segments",
+            files=upload,
+            data={"all_points_x": "[0.5]", "all_points_y": "[0.5]"},
+        ).status_code
+        == 404
+    )
+    assert client.put("/image/working", files=upload).status_code == 200
+    assert (
+        client.post(
+            "/pipeline/infer/working",
+            files=upload,
+            data={"hold_detector": "Mock", "route_discriminator": "Mock"},
         ).status_code
         == 202
     )
-    inferred = client.post(
-        "/pipeline/infer/working",
-        files=upload,
-        data={"hold_detector": "Mock", "route_discriminator": "Mock"},
-    )
-    assert inferred.status_code == 200
-    assert "routes" in inferred.json()

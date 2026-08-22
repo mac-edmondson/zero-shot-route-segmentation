@@ -1,7 +1,8 @@
+"""Image processing adapters for the dashboard API."""
+
 from __future__ import annotations
 
 import base64
-import binascii
 import io
 import uuid
 from collections.abc import Iterable, Sequence
@@ -11,11 +12,6 @@ from PIL import Image as PILImage
 # This fallback keeps the imports testable when pytest loads `backend` top-level.
 try:
     from ...pipeline.hold_detector.hold_detector_factory import hold_detector_factory
-    from ...pipeline.interfaces.augmentation import (
-        ChalkAugmentationParams,
-        ColorAugmentationParams,
-        LightingAugmentationParams,
-    )
     from ...pipeline.interfaces.data_models import (
         Coordinate as PixelCoordinate,
     )
@@ -24,6 +20,12 @@ try:
     )
     from ...pipeline.interfaces.data_models import (
         RGBColor as PipelineRGBColor,
+    )
+    from ...pipeline.preprocessing.augmentation_suite import (
+        AugmentationPlan,
+        ChalkAugmentation,
+        ColorAugmentation,
+        LightingAugmentation,
     )
     from ...pipeline.route_discriminator.route_discriminator_factory import (
         route_discriminator_factory,
@@ -31,11 +33,6 @@ try:
     from ...pipeline.route_discriminator_pipeline import RouteDiscriminatorPipeline
 except ImportError:  # Support `PYTHONPATH=src` development imports.
     from pipeline.hold_detector.hold_detector_factory import hold_detector_factory
-    from pipeline.interfaces.augmentation import (
-        ChalkAugmentationParams,
-        ColorAugmentationParams,
-        LightingAugmentationParams,
-    )
     from pipeline.interfaces.data_models import (
         Coordinate as PixelCoordinate,
     )
@@ -44,6 +41,12 @@ except ImportError:  # Support `PYTHONPATH=src` development imports.
     )
     from pipeline.interfaces.data_models import (
         RGBColor as PipelineRGBColor,
+    )
+    from pipeline.preprocessing.augmentation_suite import (
+        AugmentationPlan,
+        ChalkAugmentation,
+        ColorAugmentation,
+        LightingAugmentation,
     )
     from pipeline.route_discriminator.route_discriminator_factory import (
         route_discriminator_factory,
@@ -62,6 +65,7 @@ from .mock_segmentation import mock_segment_point
 
 
 def decode_image(raw: bytes) -> PILImage.Image:
+    """Decode upload bytes as an RGB image."""
     try:
         with PILImage.open(io.BytesIO(raw)) as image:
             return image.convert("RGB")
@@ -69,17 +73,8 @@ def decode_image(raw: bytes) -> PILImage.Image:
         raise ValueError("Couldn't read image") from exc
 
 
-def decode_data_url(value: str) -> PILImage.Image:
-    if not value.startswith("data:") or "," not in value:
-        raise ValueError("image must be an image data URL")
-    encoded = value.split(",", 1)[1]
-    try:
-        return decode_image(base64.b64decode(encoded, validate=True))
-    except (binascii.Error, ValueError) as exc:
-        raise ValueError("image must be a valid image data URL") from exc
-
-
 def image_data_url(image: PILImage.Image) -> str:
+    """Encode an image as a PNG data URL."""
     buffer = io.BytesIO()
     image.save(buffer, format="PNG")
     return "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode(
@@ -88,10 +83,12 @@ def image_data_url(image: PILImage.Image) -> str:
 
 
 def new_image_id() -> str:
+    """Return a fresh identifier for a working image."""
     return str(uuid.uuid4())
 
 
 def detect_segments(coordinates: Sequence[Coordinate]) -> list[SegmentResult]:
+    """Create mock segments for the requested normalized points."""
     # TODO: This should be actually implemented and the mock_segmentation
     # service then removed. This can't be implemented until a proper SAM3
     # segmenter is in place though.
@@ -105,6 +102,7 @@ def detect_segments(coordinates: Sequence[Coordinate]) -> list[SegmentResult]:
 
 
 def _pixel_polygon(polygon: Polygon, image: PILImage.Image) -> PixelPolygon:
+    """Convert a normalized polygon to image pixel coordinates."""
     width, height = image.size
     points = tuple(
         PixelCoordinate(
@@ -119,6 +117,7 @@ def _pixel_polygon(polygon: Polygon, image: PILImage.Image) -> PixelPolygon:
 
 
 def _api_polygon(polygon: PixelPolygon, image: PILImage.Image) -> Polygon:
+    """Convert a pixel polygon to normalized API coordinates."""
     width, height = image.size
     return Polygon(
         points=[
@@ -149,47 +148,40 @@ def augment_image(
     request: AugmentWorkingImageRequest,
     segments: Iterable[SegmentResult],
 ) -> PILImage.Image:
-    try:
-        from ...pipeline.preprocessing.augmentation_suite import AugmentationSuite
-    except ImportError:
-        from pipeline.preprocessing.augmentation_suite import AugmentationSuite
-    suite = AugmentationSuite()
-    result = image.convert("RGB").copy()
+    """Apply requested colour, chalk, then lighting augmentations."""
     by_id = {segment.segment_id: segment for segment in segments}
+    chalk_targets = []
+    chalk_strengths = []
+    color_targets = []
+    colors = []
 
     for augmentation in request.segments:
         segment = by_id.get(augmentation.segment_id)
         if segment is None:
             raise KeyError(augmentation.segment_id)
-        polygon = _pixel_polygon(segment.polygon, result)
-        result = suite.add_chalk(
-            result,
-            [polygon],
-            ChalkAugmentationParams(augmentation.chalk_percent / 100),
-            seed=0,
-        )
+        polygon = _pixel_polygon(segment.polygon, image)
+        chalk_targets.append(polygon)
+        chalk_strengths.append(augmentation.chalk_percent / 100)
         if augmentation.color is not None:
-            color = PipelineRGBColor(
-                augmentation.color.r,
-                augmentation.color.g,
-                augmentation.color.b,
-            )
-            result = suite.change_color(
-                result,
-                [polygon],
-                ColorAugmentationParams(color, COLOR_INTENSITY),
+            color_targets.append(polygon)
+            colors.append(
+                PipelineRGBColor(
+                    augmentation.color.r,
+                    augmentation.color.g,
+                    augmentation.color.b,
+                )
             )
 
-    if request.lighting_percent:
-        # No /100 here anymore -- lighting_percent is already on the -1 to 1
-        # scale LightingAugmentationParams.intensity expects (see its own
-        # range check in src/pipeline/interfaces/augmentation.py), not the
-        # old -100 to 100 one.
-        result = suite.change_lighting(
-            result,
-            LightingAugmentationParams(request.lighting_percent),
+    augmentations = []
+    if color_targets:
+        augmentations.append(ColorAugmentation(tuple(color_targets), tuple(colors)))
+    if chalk_targets:
+        augmentations.append(
+            ChalkAugmentation(tuple(chalk_targets), tuple(chalk_strengths))
         )
-    return result
+    if request.lighting_percent:
+        augmentations.append(LightingAugmentation(request.lighting_percent))
+    return AugmentationPlan(tuple(augmentations), seed=0).apply(image)
 
 
 def infer(
@@ -197,6 +189,7 @@ def infer(
     hold_detector: str,
     route_classifier: str,
 ) -> InferWorkingResponse:
+    """Run the selected pipeline and normalize its route result."""
     detector = hold_detector_factory(hold_detector)
     discriminator = route_discriminator_factory(route_classifier)
     routes = RouteDiscriminatorPipeline(detector, discriminator).get_routes([image])[0]
@@ -229,4 +222,5 @@ def infer(
 
 
 def model_error(exc: Exception) -> str:
+    """Return a client-safe message for a background job failure."""
     return str(exc) or exc.__class__.__name__

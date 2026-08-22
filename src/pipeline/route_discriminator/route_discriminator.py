@@ -56,12 +56,17 @@ class RouteDiscriminator(Protocol):
                         for point in (*hold.polygon.points, hold.polygon.points[0])
                     ]
                     fill_draw.polygon(points, fill=(*color, 102))
-            overlay = PILImage.alpha_composite(overlay.convert("RGBA"), fill_overlay).convert("RGB")
+            overlay = PILImage.alpha_composite(
+                overlay.convert("RGBA"), fill_overlay
+            ).convert("RGB")
             draw = ImageDraw.Draw(overlay)
             for route_index, route in enumerate(detected_routes):
                 color = palette[route_index % len(palette)]
                 for hold in route.holds:
-                    points = [(point.x, point.y) for point in (*hold.polygon.points, hold.polygon.points[0])]
+                    points = [
+                        (point.x, point.y)
+                        for point in (*hold.polygon.points, hold.polygon.points[0])
+                    ]
                     draw.line(points, fill=color, width=5)
             result.append(overlay)
         return result
