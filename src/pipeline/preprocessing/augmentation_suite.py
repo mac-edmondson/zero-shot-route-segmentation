@@ -1,158 +1,211 @@
-"""Simple deterministic image augmentations for evaluation datasets."""
+"""Deterministic image augmentations for evaluation datasets."""
 
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 
 import cv2
 import numpy as np
 from PIL import Image as PILImage
 
-from ..interfaces.augmentation import (
-    AugmentationPlan,
-    AugmentationRecipe,
-    ChalkAugmentation,
-    ChalkAugmentationParams,
-    ColorAugmentation,
-    ColorAugmentationParams,
-    LightingAugmentation,
-    LightingAugmentationParams,
-)
-from ..interfaces.data_models import Image, Polygon
+from ..interfaces.data_models import Hold, Image, Polygon, RGBColor
+
+type AugmentationTarget = Polygon | Hold
 
 
-class AugmentationSuite:
-    """Apply polygon-local chalk/color changes and global lighting changes."""
+def _number(value: float, name: str, low: float, high: float) -> float:
+    if isinstance(value, bool) or not isinstance(value, (float, int)):
+        raise TypeError(f"{name} must be a number.")
+    value = float(value)
+    if not low <= value <= high:
+        raise ValueError(f"{name} must be in [{low}, {high}].")
+    return value
 
-    @staticmethod
-    def _image(image: Image) -> PILImage.Image:
-        if not isinstance(image, PILImage.Image):
-            raise TypeError("image must be PIL.Image.Image.")
-        return image.convert("RGB")
 
-    @staticmethod
-    def _mask(size: tuple[int, int], polygons: Sequence[Polygon]) -> np.ndarray:
-        width, height = size
-        mask = np.zeros((height, width), dtype=np.uint8)
-        for polygon in polygons:
-            if not isinstance(polygon, Polygon):
-                raise TypeError("polygons must contain Polygon values.")
-            points = np.asarray(
-                [(point.x, point.y) for point in polygon.points], dtype=np.int32
+def _image(image: Image) -> PILImage.Image:
+    if not isinstance(image, PILImage.Image):
+        raise TypeError("image must be PIL.Image.Image.")
+    return image.convert("RGB")
+
+
+def _polygons(targets: Sequence[AugmentationTarget]) -> tuple[Polygon, ...]:
+    polygons = tuple(
+        target.polygon if isinstance(target, Hold) else target for target in targets
+    )
+    if any(not isinstance(polygon, Polygon) for polygon in polygons):
+        raise TypeError("targets must contain Polygon or Hold values.")
+    return polygons
+
+
+def _mask(size: tuple[int, int], polygon: Polygon) -> np.ndarray:
+    width, height = size
+    mask = np.zeros((height, width), dtype=np.uint8)
+    points = np.asarray(
+        [(point.x, point.y) for point in polygon.points], dtype=np.int32
+    )
+    cv2.fillPoly(mask, [points], 1)
+    return mask.astype(bool)
+
+
+def _from_array(values: np.ndarray) -> Image:
+    return PILImage.fromarray(np.clip(values, 0, 255).astype(np.uint8), mode="RGB")
+
+
+def _aligned(
+    targets: Sequence[AugmentationTarget], values: Sequence[object], name: str
+) -> tuple[tuple[Polygon, ...], tuple[object, ...]]:
+    polygons = _polygons(targets)
+    values = tuple(values)
+    if len(polygons) != len(values):
+        raise ValueError(f"targets and {name} must have the same length.")
+    return polygons, values
+
+
+def add_chalk(
+    image: Image,
+    targets: Sequence[AugmentationTarget],
+    strengths: Sequence[float],
+    *,
+    seed: int | None = None,
+) -> Image:
+    """Whiten each target with independently textured chalk."""
+    if seed is not None and (isinstance(seed, bool) or not isinstance(seed, int)):
+        raise TypeError("seed must be an integer or None.")
+    polygons, strengths = _aligned(targets, strengths, "strengths")
+    strengths = tuple(_number(strength, "strength", 0, 1) for strength in strengths)
+    source = _image(image)
+    values = np.asarray(source, dtype=np.float32).copy()
+    rng = np.random.default_rng(seed)
+    for polygon, strength in zip(polygons, strengths, strict=True):
+        if strength == 0:
+            continue
+        mask = _mask(source.size, polygon)
+        if not mask.any():
+            continue
+        alpha = rng.uniform(0.35, 1.0, size=mask.shape).astype(np.float32)
+        values[mask] += (255 - values[mask]) * (alpha[mask, None] * strength)
+    return _from_array(values)
+
+
+def change_color(
+    image: Image,
+    targets: Sequence[AugmentationTarget],
+    colors: Sequence[RGBColor],
+) -> Image:
+    """Recolour targets while retaining their pixel-level lightness."""
+    polygons, colors = _aligned(targets, colors, "colors")
+    if any(not isinstance(color, RGBColor) for color in colors):
+        raise TypeError("colors must contain RGBColor values.")
+    source = _image(image)
+    hls = cv2.cvtColor(np.asarray(source), cv2.COLOR_RGB2HLS)
+    for polygon, color in zip(polygons, colors, strict=True):
+        mask = _mask(source.size, polygon)
+        if not mask.any():
+            continue
+        target = cv2.cvtColor(
+            np.asarray([[[color.r, color.g, color.b]]], dtype=np.uint8),
+            cv2.COLOR_RGB2HLS,
+        )[0, 0]
+        hls[mask, 0] = target[0]
+        hls[mask, 2] = target[2]
+    return PILImage.fromarray(cv2.cvtColor(hls, cv2.COLOR_HLS2RGB), mode="RGB")
+
+
+def change_lighting(image: Image, strength: float) -> Image:
+    """Scale every channel in an ``H × W × 3`` RGB image by one brightness factor.
+
+    ``strength`` is dimensionless in ``[-1, 1]`` and maps to the frontend's
+    brightness factor ``1 + 0.9 * strength`` in ``[0.1, 1.9]``.
+    """
+    strength = _number(strength, "strength", -1, 1)
+    values = np.asarray(_image(image), dtype=np.float32).copy()
+    values *= 1 + strength
+    return _from_array(values)
+
+
+@dataclass(frozen=True)
+class ChalkAugmentation:
+    targets: tuple[AugmentationTarget, ...]
+    strengths: tuple[float, ...]
+
+    def __post_init__(self) -> None:
+        polygons, strengths = _aligned(self.targets, self.strengths, "strengths")
+        object.__setattr__(self, "targets", polygons)
+        object.__setattr__(
+            self,
+            "strengths",
+            tuple(_number(strength, "strength", 0, 1) for strength in strengths),
+        )
+
+
+@dataclass(frozen=True)
+class ColorAugmentation:
+    targets: tuple[AugmentationTarget, ...]
+    colors: tuple[RGBColor, ...]
+
+    def __post_init__(self) -> None:
+        polygons, colors = _aligned(self.targets, self.colors, "colors")
+        if any(not isinstance(color, RGBColor) for color in colors):
+            raise TypeError("colors must contain RGBColor values.")
+        object.__setattr__(self, "targets", polygons)
+        object.__setattr__(self, "colors", colors)
+
+
+@dataclass(frozen=True)
+class LightingAugmentation:
+    strength: float
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "strength", _number(self.strength, "strength", -1, 1))
+
+
+type AugmentationRecipe = ChalkAugmentation | ColorAugmentation | LightingAugmentation
+
+
+@dataclass(frozen=True)
+class AugmentationPlan:
+    augmentations: tuple[AugmentationRecipe, ...]
+    seed: int | None = None
+
+    def __post_init__(self) -> None:
+        augmentations = tuple(self.augmentations)
+        if any(
+            not isinstance(
+                augmentation,
+                (ChalkAugmentation, ColorAugmentation, LightingAugmentation),
             )
-            cv2.fillPoly(mask, [points], 1)
-        return mask.astype(bool)
-
-    @staticmethod
-    def _from_array(values: np.ndarray) -> Image:
-        return PILImage.fromarray(np.clip(values, 0, 255).astype(np.uint8), mode="RGB")
-
-    def add_chalk(
-        self,
-        image: Image,
-        polygons: Sequence[Polygon],
-        params: ChalkAugmentationParams,
-        *,
-        seed: int | None = None,
-    ) -> Image:
-        if not isinstance(params, ChalkAugmentationParams):
-            raise TypeError("params must be ChalkAugmentationParams.")
-        source = self._image(image)
-        mask = self._mask(source.size, polygons)
-        if not mask.any() or params.intensity == 0:
-            return source.copy()
-        values = np.asarray(source, dtype=np.float32).copy()
-        rng = np.random.default_rng(seed)
-        texture = rng.uniform(0.35, 1.0, size=mask.shape).astype(np.float32) * float(
-            params.intensity
-        )
-        alpha = texture[mask, None]
-        values[mask] += (255 - values[mask]) * alpha
-        return self._from_array(values)
-
-    def change_color(
-        self, image: Image, polygons: Sequence[Polygon], params: ColorAugmentationParams
-    ) -> Image:
-        if not isinstance(params, ColorAugmentationParams):
-            raise TypeError("params must be ColorAugmentationParams.")
-        source = self._image(image)
-        mask = self._mask(source.size, polygons)
-        if not mask.any() or params.intensity == 0:
-            return source.copy()
-        values = np.asarray(source, dtype=np.float32).copy()
-        target = np.asarray(
-            (params.color.r, params.color.g, params.color.b), dtype=np.float32
-        )
-        values[mask] = values[mask] * (1 - float(params.intensity)) + target * float(
-            params.intensity
-        )
-        return self._from_array(values)
-
-    def change_lighting(
-        self, image: Image, params: LightingAugmentationParams
-    ) -> Image:
-        if not isinstance(params, LightingAugmentationParams):
-            raise TypeError("params must be LightingAugmentationParams.")
-        values = np.asarray(self._image(image), dtype=np.float32).copy()
-        intensity = float(params.intensity)
-        if intensity >= 0:
-            values += (255 - values) * intensity
-        else:
-            values *= 1 + intensity
-        return self._from_array(values)
-
-    def apply(
-        self,
-        image: Image,
-        *,
-        chalk_polygons: Sequence[Polygon] | None = None,
-        chalk_params: ChalkAugmentationParams | None = None,
-        color_polygons: Sequence[Polygon] | None = None,
-        color_params: ColorAugmentationParams | None = None,
-        lighting_params: LightingAugmentationParams | None = None,
-        seed: int | None = None,
-    ) -> Image:
-        result = self._image(image).copy()
-        if chalk_params is not None:
-            result = self.add_chalk(
-                result, chalk_polygons or (), chalk_params, seed=seed
+            for augmentation in augmentations
+        ):
+            raise TypeError(
+                "augmentations must contain supported augmentation recipes."
             )
-        if color_params is not None:
-            result = self.change_color(result, color_polygons or (), color_params)
-        if lighting_params is not None:
-            result = self.change_lighting(result, lighting_params)
+        if self.seed is not None and (
+            isinstance(self.seed, bool) or not isinstance(self.seed, int)
+        ):
+            raise TypeError("seed must be an integer or None.")
+        object.__setattr__(self, "augmentations", augmentations)
+
+    def apply(self, image: Image) -> Image:
+        """Apply recipes in declaration order without mutating image."""
+        result = _image(image)
+        for index, augmentation in enumerate(self.augmentations):
+            if isinstance(augmentation, ChalkAugmentation):
+                seed = (
+                    None
+                    if self.seed is None
+                    else int(
+                        np.random.SeedSequence((self.seed, index)).generate_state(1)[0]
+                    )
+                )
+                result = add_chalk(
+                    result,
+                    augmentation.targets,
+                    augmentation.strengths,
+                    seed=seed,
+                )
+            elif isinstance(augmentation, ColorAugmentation):
+                result = change_color(result, augmentation.targets, augmentation.colors)
+            else:
+                result = change_lighting(result, augmentation.strength)
         return result
-
-    @staticmethod
-    def plan(
-        *augmentations: AugmentationRecipe, seed: int | None = None
-    ) -> AugmentationPlan:
-        return AugmentationPlan(tuple(augmentations), seed)
-
-    def apply_plan(self, image: Image, plan: AugmentationPlan) -> Image:
-        if not isinstance(plan, AugmentationPlan):
-            raise TypeError("plan must be AugmentationPlan.")
-        result = self._image(image).copy()
-        order = (ChalkAugmentation, ColorAugmentation, LightingAugmentation)
-        for kind in order:
-            for augmentation in plan.augmentations:
-                if isinstance(augmentation, kind):
-                    if isinstance(augmentation, ChalkAugmentation):
-                        result = self.add_chalk(
-                            result,
-                            augmentation.polygons,
-                            augmentation.params,
-                            seed=plan.seed,
-                        )
-                    elif isinstance(augmentation, ColorAugmentation):
-                        result = self.change_color(
-                            result, augmentation.polygons, augmentation.params
-                        )
-                    else:
-                        result = self.change_lighting(result, augmentation.params)
-        return result
-
-    def materialize(
-        self, images: Sequence[Image], plan: AugmentationPlan
-    ) -> list[Image]:
-        return [self.apply_plan(image, plan) for image in images]

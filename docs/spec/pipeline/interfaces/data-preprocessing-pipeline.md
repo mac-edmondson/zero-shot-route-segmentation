@@ -2,7 +2,7 @@
 
 TODO: Port to code and clean
 
-**Depends on:** [Shared Data Models](data-models.md), [AugmentationSuite](augmentation-suite.md)
+**Depends on:** [Shared Data Models](data-models.md), [image augmentations](augmentation-suite.md)
 **Consumed by:** [EvaluationSuite](evaluation-suite.md)
 
 ## 1. Responsibility

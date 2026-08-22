@@ -80,6 +80,7 @@ def test_pipeline_configuration_and_async_workflow() -> None:
         == 200
     )
     assert client.put("/image/working", files=upload).status_code == 200
+    original_image = client.get("/image/working").json()["image"]
 
     assert (
         client.post(
@@ -103,7 +104,9 @@ def test_pipeline_configuration_and_async_workflow() -> None:
         ).status_code
         == 202
     )
-    assert client.get("/image/working").json()["status"] == "completed"
+    augmented = client.get("/image/working").json()
+    assert augmented["status"] == "completed"
+    assert augmented["image"] != original_image
 
     assert client.post("/pipeline/infer/working").status_code == 202
     result = client.get("/pipeline/infer/working").json()

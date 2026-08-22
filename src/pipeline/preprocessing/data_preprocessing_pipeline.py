@@ -5,9 +5,9 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import replace
 from hashlib import sha256
+from typing import ClassVar
 
 from ..interfaces.data_models import ImageRecord
-from .augmentation_suite import AugmentationSuite
 from .data_preprocessing import (
     DatasetProvider,
     DatasetSpec,
@@ -41,10 +41,7 @@ class _Provider:
 class DataPreprocessingPipeline:
     """Create split-stable clean and augmented records without mutating inputs."""
 
-    _WEIGHTS = {"train": 0.8, "val": 0.1, "test": 0.1}
-
-    def __init__(self, augmentation_suite: AugmentationSuite | None = None) -> None:
-        self.augmentation_suite = augmentation_suite or AugmentationSuite()
+    _WEIGHTS: ClassVar = {"train": 0.8, "val": 0.1, "test": 0.1}
 
     def _split(self, record: ImageRecord, spec: DatasetSpec) -> str:
         if record.split is not None:
@@ -74,7 +71,10 @@ class DataPreprocessingPipeline:
         return {
             "dataset_id": spec.dataset_id,
             "seed": plan.seed if plan and plan.seed is not None else spec.seed,
-            "augmentations": tuple(recipe.name for recipe in plan.augmentations)
+            "augmentations": tuple(
+                type(recipe).__name__.removesuffix("Augmentation").lower()
+                for recipe in plan.augmentations
+            )
             if plan
             else (),
         }
@@ -85,7 +85,7 @@ class DataPreprocessingPipeline:
             return None
         if plan.seed is None:
             plan = replace(plan, seed=spec.seed)
-        image = self.augmentation_suite.apply_plan(record.image, plan)
+        image = plan.apply(record.image)
         fingerprint = sha256(
             repr((record.source_id, spec.dataset_id, plan)).encode()
         ).hexdigest()[:12]

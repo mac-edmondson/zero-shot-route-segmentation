@@ -12,11 +12,6 @@ from PIL import Image as PILImage
 # This fallback keeps the imports testable when pytest loads `backend` top-level.
 try:
     from ...pipeline.hold_detector.hold_detector_factory import hold_detector_factory
-    from ...pipeline.interfaces.augmentation import (
-        ChalkAugmentationParams,
-        ColorAugmentationParams,
-        LightingAugmentationParams,
-    )
     from ...pipeline.interfaces.data_models import (
         Coordinate as PixelCoordinate,
     )
@@ -25,6 +20,12 @@ try:
     )
     from ...pipeline.interfaces.data_models import (
         RGBColor as PipelineRGBColor,
+    )
+    from ...pipeline.preprocessing.augmentation_suite import (
+        AugmentationPlan,
+        ChalkAugmentation,
+        ColorAugmentation,
+        LightingAugmentation,
     )
     from ...pipeline.route_discriminator.route_discriminator_factory import (
         route_discriminator_factory,
@@ -32,11 +33,6 @@ try:
     from ...pipeline.route_discriminator_pipeline import RouteDiscriminatorPipeline
 except ImportError:  # Support `PYTHONPATH=src` development imports.
     from pipeline.hold_detector.hold_detector_factory import hold_detector_factory
-    from pipeline.interfaces.augmentation import (
-        ChalkAugmentationParams,
-        ColorAugmentationParams,
-        LightingAugmentationParams,
-    )
     from pipeline.interfaces.data_models import (
         Coordinate as PixelCoordinate,
     )
@@ -45,6 +41,12 @@ except ImportError:  # Support `PYTHONPATH=src` development imports.
     )
     from pipeline.interfaces.data_models import (
         RGBColor as PipelineRGBColor,
+    )
+    from pipeline.preprocessing.augmentation_suite import (
+        AugmentationPlan,
+        ChalkAugmentation,
+        ColorAugmentation,
+        LightingAugmentation,
     )
     from pipeline.route_discriminator.route_discriminator_factory import (
         route_discriminator_factory,
@@ -133,44 +135,40 @@ def augment_image(
     request: AugmentWorkingImageRequest,
     segments: Iterable[SegmentResult],
 ) -> PILImage.Image:
-    """Apply requested lighting, chalk, and colour augmentations."""
-    try:
-        from ...pipeline.preprocessing.augmentation_suite import AugmentationSuite
-    except ImportError:
-        from pipeline.preprocessing.augmentation_suite import AugmentationSuite
-    suite = AugmentationSuite()
-    result = image.convert("RGB").copy()
+    """Apply requested colour, chalk, then lighting augmentations."""
     by_id = {segment.segment_id: segment for segment in segments}
+    chalk_targets = []
+    chalk_strengths = []
+    color_targets = []
+    colors = []
 
     for augmentation in request.segments:
         segment = by_id.get(augmentation.segment_id)
         if segment is None:
             raise KeyError(augmentation.segment_id)
-        polygon = _pixel_polygon(segment.polygon, result)
-        result = suite.add_chalk(
-            result,
-            [polygon],
-            ChalkAugmentationParams(augmentation.chalk_percent / 100),
-            seed=0,
-        )
+        polygon = _pixel_polygon(segment.polygon, image)
+        chalk_targets.append(polygon)
+        chalk_strengths.append(augmentation.chalk_percent / 100)
         if augmentation.color is not None:
-            color = PipelineRGBColor(
-                augmentation.color.r,
-                augmentation.color.g,
-                augmentation.color.b,
-            )
-            result = suite.change_color(
-                result,
-                [polygon],
-                ColorAugmentationParams(color, augmentation.chalk_percent / 100),
+            color_targets.append(polygon)
+            colors.append(
+                PipelineRGBColor(
+                    augmentation.color.r,
+                    augmentation.color.g,
+                    augmentation.color.b,
+                )
             )
 
-    if request.lighting_percent:
-        result = suite.change_lighting(
-            result,
-            LightingAugmentationParams(request.lighting_percent / 100),
+    augmentations = []
+    if color_targets:
+        augmentations.append(ColorAugmentation(tuple(color_targets), tuple(colors)))
+    if chalk_targets:
+        augmentations.append(
+            ChalkAugmentation(tuple(chalk_targets), tuple(chalk_strengths))
         )
-    return result
+    if request.lighting_percent:
+        augmentations.append(LightingAugmentation(request.lighting_percent / 100))
+    return AugmentationPlan(tuple(augmentations), seed=0).apply(image)
 
 
 def infer(
