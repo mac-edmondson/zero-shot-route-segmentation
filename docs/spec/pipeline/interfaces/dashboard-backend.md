@@ -78,6 +78,52 @@ None specified.
 
 ---
 
+### Pipeline Inferrence
+
+These endpoints are used to utilize the pipeline for inference.
+
+#### `POST /pipeline/infer/working`
+
+Starts inference on the current working image.
+
+#### Request body
+
+None specified.
+
+#### Response
+
+###### Status Code(s): `202 Accepted`, `409 Conflict`
+
+Returns immediately after the inference request is accepted. The frontend must poll the corresponding GET endpoint to retrieve the inferred routes.
+
+###### Body
+
+None specified.
+
+---
+
+#### `GET /pipeline/infer/working`
+
+Returns the current inference state and result.
+
+##### Request body
+
+None specified.
+
+##### Response
+
+###### Status Code(s): `200 OK`
+
+The frontend can poll this endpoint until `status` becomes `"completed"` or `"failed"`.
+
+###### Body
+
+* `routes`: list of routes, where each route is itself a list of holds.
+* `status`: `"processing"`, `"completed"`, or `"failed"`.
+* `error`: error information when `status` is `"failed"`; otherwise omitted.
+
+---
+
 ### Images / Gallery
 
 **Endpoint root:** `/images`
@@ -214,45 +260,3 @@ None specified.
 ###### Body
 
 None specified.
-
----
-
-#### `POST /pipeline/infer/working`
-
-Starts inference on the current working image.
-
-#### Request body
-
-None specified.
-
-#### Response
-
-###### Status Code(s): `202 Accepted`, `409 Conflict`
-
-Returns immediately after the inference request is accepted. The frontend must poll the corresponding GET endpoint to retrieve the inferred routes.
-
-###### Body
-
-None specified.
-
----
-
-### `GET /pipeline/infer/working`
-
-Returns the current inference state and result.
-
-#### Request body
-
-None specified.
-
-#### Response
-
-###### Status Code(s): `200 OK`
-
-The frontend can poll this endpoint until `status` becomes `"completed"` or `"failed"`.
-
-###### Body
-
-* `routes`: list of routes, where each route is itself a list of holds.
-* `status`: `"processing"`, `"completed"`, or `"failed"`.
-* `error`: error information when `status` is `"failed"`; otherwise omitted.
