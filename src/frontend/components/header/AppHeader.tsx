@@ -13,16 +13,32 @@ interface AppHeaderProps {
    * else (see WallImageWorkspace's recognition loader).
    */
   titleRef?: RefObject<HTMLHeadingElement | null>;
+  /**
+   * Makes the logo clickable -- e.g. WallImageWorkspace uses this to reset
+   * back to its own landing state. Omitted entirely (not just a no-op),
+   * the logo renders as plain, non-interactive text, same as before this
+   * prop existed.
+   */
+  onLogoClick?: () => void;
 }
 
 /** Wordmark + right-side slot + divider, from Project stuff/UI_page_1.png, restyled. */
-export function AppHeader({ title, right, titleRef }: AppHeaderProps) {
+export function AppHeader({ title, right, titleRef, onLogoClick }: AppHeaderProps) {
   return (
     <header className={styles.header}>
       <div className={styles.row}>
         <h1 className={styles.title} ref={titleRef}>
-          <Wordmark text={title} />
-          <span className="sr-only">{title}</span>
+          {onLogoClick ? (
+            <button type="button" className={styles.logoButton} onClick={onLogoClick}>
+              <Wordmark text={title} />
+              <span className="sr-only">{title}</span>
+            </button>
+          ) : (
+            <>
+              <Wordmark text={title} />
+              <span className="sr-only">{title}</span>
+            </>
+          )}
         </h1>
         {right}
       </div>

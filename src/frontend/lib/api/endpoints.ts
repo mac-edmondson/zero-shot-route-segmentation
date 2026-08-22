@@ -116,10 +116,11 @@ export const restApiClient: RouteDetectionApiClient = {
     return mapWorkingImage(raw);
   },
 
-  async setWorkingImage(file) {
+  async setWorkingImage(file, options) {
     const form = new FormData();
     form.append("image", file);
-    await request("/image/working", { method: "PUT", body: form });
+    const query = options?.keepSegments ? "?keep_segments=true" : "";
+    await request(`/image/working${query}`, { method: "PUT", body: form });
   },
 
   async detectWorkingSegments(coordinates) {
