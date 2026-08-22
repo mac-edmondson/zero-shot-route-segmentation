@@ -5,7 +5,7 @@ import type { CSSProperties, RefObject } from "react";
 import { apiClient } from "@/lib/api";
 import type { Coordinate, Hold, InferenceResult, RGBColor, Segment } from "@/lib/api";
 import { AppHeader } from "@/components/header/AppHeader";
-import { FlyingLogoLoader } from "@/components/flying-logo-loader/FlyingLogoLoader";
+import { Wordmark } from "@/components/wordmark/Wordmark";
 import { ImageSourceButtons } from "@/components/image-source-buttons/ImageSourceButtons";
 import { GalleryPicker } from "@/components/gallery-picker/GalleryPicker";
 import { ImageCanvas } from "@/components/image-canvas/ImageCanvas";
@@ -44,6 +44,19 @@ const MODEL_SELECT_REVEAL_MS_NO_SEGMENTS = 450;
  * leave transition (the same way handleBackToAugment already does) before
  * the routes panel takes its place in the same grid cell. */
 const MODEL_SELECT_LEAVE_MS = 550;
+
+/** How long the recognition loader's clone spends flying between the real
+ * logo and its resting spot, each direction -- see loaderPhase. Same
+ * duration used for both legs (in via useFlipSlide, out via the dedicated
+ * effect below) so the round trip reads symmetrically. */
+const LOADER_FLIP_MS = 650;
+/** var(--ease) (used for the "in" leg, via useFlipSlide) is an ease-out-expo
+ * curve -- fast off the start, gently settling at the end, which reads well
+ * for something arriving but noticeably rushed-then-crawling for the
+ * reverse trip. This is a symmetric ease-in-out instead, gentle at both
+ * ends, for the "out" leg's own effect below -- a calmer, evenly-paced
+ * "smooth" departure instead of the arrival curve run backwards. */
+const LOADER_OUT_EASE = "cubic-bezier(0.45, 0, 0.2, 1)";
 
 /** Per-hold reveal stagger, bottom-first (see holdsByRoute below). Purely a
  * CSS animation-delay multiplier -- no JS timer depends on it. */
@@ -164,15 +177,6 @@ export function WallImageWorkspace() {
   // stops meaning "identical to what's showing" the moment what's showing
   // is the augmented image instead of the original one).
   const originalImageSrcRef = useRef<string | null>(null);
-  // The actual original File/Blob (not just its data-URL preview above) --
-  // kept so handleBackToAugment can re-PUT it to the backend (the same
-  // /image/working endpoint loadImage itself uses), resetting
-  // session.working_image back to the true original there too. Without
-  // this, the backend's own copy stays whatever the last Finish Augment
-  // produced, so a repeated Finish Augment -> Back to Augment -> Finish
-  // Augment cycle keeps layering new lighting/chalk/color on top of
-  // already-augmented pixels instead of starting fresh each time.
-  const originalImageFileRef = useRef<File | Blob | null>(null);
   const [segments, setSegments] = useState<Segment[]>([]);
   /** Points clicked but not yet sent for detection. */
   const [pendingPoints, setPendingPoints] = useState<Coordinate[]>([]);
@@ -222,18 +226,22 @@ export function WallImageWorkspace() {
   const [routeModelOptions, setRouteModelOptions] = useState<string[]>([]);
   const [inferring, setInferring] = useState(false);
 
-  // The real logo up in the header -- measured by FlyingLogoLoader
-  // (below/in ImageCanvas) as the "from"/"to" rect its clone flies
-  // between. Shared across every FlyingLogoLoader instance on this page,
-  // since there's only the one real logo they're all flying out of.
+  // --- Recognition loader -----------------------------------------------
+  // A cloned Wordmark that flies out of the real logo up in the header,
+  // down into the spot where the routes list is about to appear, loops its
+  // route-draw there for as long as inference is running (Wordmark's
+  // `loop` prop), then flies back and fades into the real logo once the
+  // backend responds -- success or failure alike, since this is purely
+  // "still working" -> "done working", not a result indicator itself.
+  // "idle": not shown. "in": flying from the header to its resting spot
+  // (useFlipSlide below drives this leg). "waiting": resting, looping.
+  // "out": flying back to the header and fading (a dedicated effect below
+  // drives this leg -- useFlipSlide only ever animates an *entrance*).
+  const [loaderPhase, setLoaderPhase] = useState<"idle" | "in" | "waiting" | "out">("idle");
   const logoRef = useRef<HTMLHeadingElement>(null);
-  // True once the Recognition loader (see the JSX below) has fully flown
-  // back out and unmounted -- FlyingLogoLoader's own onExited callback.
-  // Distinct from !inferring: the clone is still visibly flying/fading for
-  // a beat after inferring itself already goes false, and the model-select
-  // controls (see showModelSelect below) shouldn't reappear while it's
-  // still on screen.
-  const [loaderExited, setLoaderExited] = useState(true);
+  const loaderRef = useRef<HTMLDivElement>(null);
+  const loaderFromRectRef = useRef<DOMRect | null>(null);
+  // ------------------------------------------------------------------------
 
   // Recognition results -- another phase of this same page, not a route
   // (see the component docstring above).
@@ -436,17 +444,70 @@ export function WallImageWorkspace() {
   useFlipSlide(showLockedModels, lockedModelsRef, modelSlideFromRectRef, MODEL_SELECT_LEAVE_MS);
   useFlipSlide(showModelSelect, modelSelectRowRef, modelSlideBackFromRectRef, MODEL_SELECT_LEAVE_MS);
 
-  // Flips loaderExited back to false the instant a new Recognition loader
-  // cycle starts (FlyingLogoLoader's own onExited, further down, is what
-  // sets it back to true once that cycle's "out" leg actually finishes).
-  // Deferred via rAF rather than called inline, same reasoning as
-  // showBackToAugment's own reset effect above.
+  // Recognition loader, leg 1: flies in from the real logo (loaderFromRectRef
+  // is measured in handleGoToRecognition, right when loaderPhase is first
+  // set to "in", the same way modelSlideFromRectRef etc. are measured right
+  // before their own FLIP-driving state flips). Once the flight's done,
+  // settle into "waiting" -- the loop keeps running (it's Wordmark's own
+  // CSS animation, not driven from here) for as long as that phase holds.
+  useFlipSlide(loaderPhase === "in", loaderRef, loaderFromRectRef, LOADER_FLIP_MS);
   useEffect(() => {
-    if (inferring) {
-      const raf = requestAnimationFrame(() => setLoaderExited(false));
+    if (loaderPhase !== "in") return;
+    const timeout = setTimeout(() => setLoaderPhase("waiting"), LOADER_FLIP_MS);
+    return () => clearTimeout(timeout);
+  }, [loaderPhase]);
+
+  // Recognition loader, leg 2: flies back to wherever the real logo
+  // currently is (re-measured now, not reused from leg 1, in case the
+  // layout shifted while it was away) and fades out over it, rather than
+  // just vanishing -- reads as the clone rejoining/blending into the real
+  // logo instead of two separate marks. useFlipSlide only ever drives an
+  // *entrance* (a translate that decays to rest), so this leg -- a
+  // translate that grows away from rest, paired with a fade -- is its own
+  // effect instead of a second useFlipSlide call.
+  useLayoutEffect(() => {
+    if (loaderPhase !== "out") return;
+    const el = loaderRef.current;
+    const toRect = logoRef.current?.getBoundingClientRect();
+    if (!el || !toRect || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      // Deferred, not called inline here, same reasoning as
+      // showBackToAugment's own reset effect further up.
+      const raf = requestAnimationFrame(() => setLoaderPhase("idle"));
       return () => cancelAnimationFrame(raf);
     }
-  }, [inferring]);
+    const fromRect = el.getBoundingClientRect();
+    const dx = toRect.left - fromRect.left;
+    const dy = toRect.top - fromRect.top;
+
+    el.style.transition = "none";
+    el.style.transform = "translate(0, 0)";
+    el.style.opacity = "1";
+
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        el.style.transition = `transform ${LOADER_FLIP_MS}ms ${LOADER_OUT_EASE}, opacity ${LOADER_FLIP_MS}ms ${LOADER_OUT_EASE}`;
+        el.style.transform = `translate(${dx}px, ${dy}px)`;
+        el.style.opacity = "0";
+      });
+    });
+    const timeout = setTimeout(() => setLoaderPhase("idle"), LOADER_FLIP_MS);
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+      clearTimeout(timeout);
+    };
+  }, [loaderPhase]);
+
+  // The actual trigger for leg 2 -- inferring's own true -> false edge,
+  // which fires identically on success or failure (handleGoToRecognition's
+  // finally), since this loader means "still working", not "it worked".
+  useEffect(() => {
+    if (!inferring && loaderPhase === "waiting") {
+      const raf = requestAnimationFrame(() => setLoaderPhase("out"));
+      return () => cancelAnimationFrame(raf);
+    }
+  }, [inferring, loaderPhase]);
 
   // Appears only once BOTH dropdowns have a pick -- unlike the entrance
   // timing above, this one can't be "either", because the Recognition call
@@ -596,7 +657,6 @@ export function WallImageWorkspace() {
       setImageId(createLocalImageId());
       setImageSrc(dataUrl);
       originalImageSrcRef.current = dataUrl;
-      originalImageFileRef.current = file;
       setSegments([]);
       setPendingPoints([]);
       setChalkBySegmentId({});
@@ -769,12 +829,13 @@ export function WallImageWorkspace() {
 
   async function handleGoToRecognition() {
     if (!imageId || !holdModel || !routeModel) return;
-    // The Recognition loader (see the JSX below) reacts to `inferring`
-    // itself -- FlyingLogoLoader measures the real logo's rect and starts
-    // flying in on its own the instant this goes true, no imperative
-    // trigger needed here the way modelSlideFromRectRef etc. still need
-    // further down (those measure a rect *this* handler is about to make
-    // stale, which the logo's own position never is).
+    // Measured now, before anything below starts moving -- this is the
+    // recognition loader's own FLIP "from" rect (see loaderPhase and
+    // useFlipSlide above), same pattern as modelSlideFromRectRef further
+    // down: capture the real logo's current position before the state
+    // flip that triggers the clone's entrance.
+    loaderFromRectRef.current = logoRef.current?.getBoundingClientRect() ?? null;
+    setLoaderPhase("in");
     setInferring(true);
     setError(null);
     try {
@@ -856,7 +917,7 @@ export function WallImageWorkspace() {
   // bring those back on its own. modelSelectPanel/routesPanel don't have
   // that built in (only ever mounted forward), so their own reverse fades
   // are played here explicitly before unmounting them.
-  async function handleBackToAugment() {
+  function handleBackToAugment() {
     // Swap the real (post-augmentation) image back out for the original --
     // see originalImageSrcRef's own comment for why this has to happen
     // before augmentDone flips back to false and ImageCanvas's live preview
@@ -878,24 +939,6 @@ export function WallImageWorkspace() {
       setModelSelectEntered(false);
       setTimeout(() => setShowModelSelect(false), MODEL_SELECT_LEAVE_MS);
     }
-
-    // Re-PUT the original file -- same /image/working endpoint loadImage
-    // itself uses at upload time (see originalImageFileRef's own comment),
-    // with keepSegments so the backend resets session.working_image back
-    // to the true original without also dropping the holds already
-    // detected on it (see setWorkingImage's own doc comment and
-    // src/backend/routes/working_image.py's keep_segments param). Without
-    // this reset at all, repeated Finish Augment -> Back to Augment ->
-    // Finish Augment cycles kept layering each new lighting/chalk/color
-    // pass on top of whatever the previous Finish Augment had already
-    // produced server-side.
-    if (originalImageFileRef.current) {
-      try {
-        await apiClient.setWorkingImage(originalImageFileRef.current, { keepSegments: true });
-      } catch (err) {
-        console.warn("setWorkingImage failed while resetting for Back to Augment", err);
-      }
-    }
   }
 
   // Clicking the logo (see AppHeader's onLogoClick) -- back to this page's
@@ -911,7 +954,6 @@ export function WallImageWorkspace() {
     setImageId(null);
     setImageSrc(null);
     originalImageSrcRef.current = null;
-    originalImageFileRef.current = null;
     setSegments([]);
     setPendingPoints([]);
     setDetecting(false);
@@ -930,6 +972,7 @@ export function WallImageWorkspace() {
     setHoldModel(null);
     setRouteModel(null);
     setInferring(false);
+    setLoaderPhase("idle");
     setRecognitionResult(null);
     setRecognitionDone(false);
     setRoutesPanelEntered(false);
@@ -1157,7 +1200,7 @@ export function WallImageWorkspace() {
           />
 
           {/* Hidden for as long as the recognition loader is on screen (see
-              loaderExited) -- the two dropdowns/Recognition button read as
+              loaderPhase) -- the two dropdowns/Recognition button read as
               still-live controls sitting right next to it otherwise, when
               actually a request is already in flight and nothing here is
               interactive. Reappears on its own once the loader returns to
@@ -1165,7 +1208,7 @@ export function WallImageWorkspace() {
               success path already flips showModelSelect false before that
               happens) or, on a failed attempt, so the controls come back
               and the user can retry. */}
-          {showModelSelect && loaderExited && (
+          {showModelSelect && loaderPhase === "idle" && (
             <div
               className={`${styles.modelSelectPanel} ${modelSelectEntered ? styles.modelSelectPanelIn : ""}`}
             >
@@ -1201,12 +1244,14 @@ export function WallImageWorkspace() {
             </div>
           )}
 
-          <FlyingLogoLoader
-            active={inferring}
-            logoRef={logoRef}
-            className={styles.recognitionLoaderSlot}
-            onExited={() => setLoaderExited(true)}
-          />
+          {loaderPhase !== "idle" && (
+            <div className={styles.recognitionLoaderSlot}>
+              <div ref={loaderRef} className={styles.recognitionLoaderClone}>
+                <Wordmark text="ROUTNet" loop paused={loaderPhase === "out"} />
+              </div>
+              <p className={styles.recognitionLoaderText}>Working in progress…</p>
+            </div>
+          )}
 
           {recognitionDone && recognitionResult && (
             <div

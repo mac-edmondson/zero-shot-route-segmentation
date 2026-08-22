@@ -30,13 +30,7 @@ def _reset_working_image_keep_segments(session: SessionState, image: Any) -> Non
 
     Used by "Back to Augment" (see WallImageWorkspace.tsx's
     handleBackToAugment): it re-PUTs the original upload here to reset
-    session.working_image back to the true original, so a repeated Finish
-    Augment -> Back to Augment -> Finish Augment cycle doesn't keep layering
-    each new lighting/chalk/color pass on top of pixels the previous Finish
-    Augment already modified. Unlike a fresh upload, that reset shouldn't
-    also throw away the holds already detected on this same image, so this
-    is _set_working_image with exactly one line -- session.segments.clear()
-    -- removed, everything else identical.
+    session.working_image back to the true original.
     """
     with session.lock:
         session.working_image = image
