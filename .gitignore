@@ -37,4 +37,5 @@ Project\ stuff/
 
 #output files
 data/test-rcnn-pipeline
-data/indoor-climbing-gym-hold-segmentation
+data/roboflow_dataset
+data/test-yolo-pipeline
