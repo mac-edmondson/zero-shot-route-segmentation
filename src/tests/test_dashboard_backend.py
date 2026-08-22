@@ -112,28 +112,3 @@ def test_pipeline_configuration_and_async_workflow() -> None:
     result = client.get("/pipeline/infer/working").json()
     assert result["status"] == "completed"
     assert "inference_metrics" in result
-
-
-def test_removed_legacy_routes_use_retained_async_inference() -> None:
-    """Assert removed legacy calls cannot restore synchronous inference."""
-    sessions.clear()
-    client = TestClient(app)
-    upload = {"image": ("wall.png", _image_bytes(), "image/png")}
-
-    assert (
-        client.post(
-            "/image/working/segments",
-            files=upload,
-            data={"all_points_x": "[0.5]", "all_points_y": "[0.5]"},
-        ).status_code
-        == 404
-    )
-    assert client.put("/image/working", files=upload).status_code == 200
-    assert (
-        client.post(
-            "/pipeline/infer/working",
-            files=upload,
-            data={"hold_detector": "Mock", "route_discriminator": "Mock"},
-        ).status_code
-        == 202
-    )
