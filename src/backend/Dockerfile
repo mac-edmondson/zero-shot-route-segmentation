@@ -22,10 +22,6 @@ RUN /venv/bin/pip install --no-cache-dir --no-build-isolation -r detectron.requi
 FROM python:3.12-slim AS base
 
 COPY --from=builder /venv /venv
-
-COPY models ./models
-COPY src ./src
-
 ENV PATH="/venv/bin:$PATH"
 
 # Ensure models needed for runtime inference are baked into the image
@@ -34,6 +30,9 @@ RUN python - <<'PY'
 from torchvision.models import resnet50, ResNet50_Weights
 resnet50(weights=ResNet50_Weights.IMAGENET1K_V2)
 PY
+
+COPY models ./models
+COPY src ./src
 
 EXPOSE 8000
 CMD ["uvicorn", "src.backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
