@@ -62,10 +62,45 @@
 .image {
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  /* cover, not contain -- contain letterboxes whenever the photo's aspect
+     ratio doesn't exactly match the box's (i.e. almost always), leaving
+     empty glass-surface bars on two sides. This fills the box completely
+     instead, cropping the excess rather than shrinking to fit. */
+  object-fit: cover;
   cursor: crosshair;
   display: block;
   transition: filter var(--dur-fast) linear;
+}
+
+/* Read-only display (interactive=false, e.g. the recognition page's
+   carried-over image) -- not clickable, so no crosshair. */
+.imageStatic {
+  cursor: default;
+}
+
+/* A segment card's "Choose color" is waiting on a click here -- the system
+ * cursor is hidden in favor of the live .colorDrop that follows the
+ * pointer instead (see ImageCanvas.tsx), so the mode reads as "sampling",
+ * not "adding a point", and previews the actual color as you move. */
+.imagePicking {
+  cursor: none;
+}
+
+/* The live color-pick cursor itself -- a teardrop pin whose tip sits at the
+ * exact sampled point (hence the -50%/-100% translate: the path's own tip
+ * sits at the SVG's bottom-center) -- the whole drop, tip included, is
+ * filled with the currently-hovered pixel's color. Follows colorDropHover's
+ * x/y, set from plain mousemove so it's exactly as responsive as the
+ * system cursor it's replacing. */
+.colorDrop {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  pointer-events: none;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.45));
+}
+
+.colorDropShape path {
+  transition: fill var(--dur-fast) linear;
 }
 
 .video {
@@ -143,6 +178,20 @@
   vector-effect: non-scaling-stroke;
 }
 
+/* Applied instead of .polygonShape once a color's been picked for a segment
+ * (see ImageCanvas.tsx/SegmentCard's "Choose color") -- --hold-color is set
+ * inline per segment. Unlike the plain shape's faint 18% tint, this fills
+ * the whole hold solidly (short of fully opaque so the hold's own edge/
+ * texture still reads underneath), since the point of picking a color is
+ * to recolor the segment itself, not just tint its outline. */
+.polygonShapeColored {
+  fill: color-mix(in srgb, var(--hold-color) 72%, transparent);
+  stroke: var(--hold-color);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+  transition: stroke var(--dur-fast) var(--ease), fill var(--dur-fast) var(--ease);
+}
+
 /* Painted after (so on top of) .polygonShape -- fill-opacity is set inline
  * per segment from its chalkPercent (see ImageCanvas.tsx), so this only
  * supplies the color and a transition for smooth live slider updates. */
@@ -173,6 +222,23 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-full);
   padding: 0.3rem 0.65rem;
+}
+
+/* Same pill treatment as .liveBadge, top-right instead so it doesn't
+ * collide with the segment number markers (top-left-ish, wherever the
+ * holds actually are). */
+.pickingBadge {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  font-size: 0.72rem;
+  color: var(--accent-text);
+  background: rgba(8, 9, 11, 0.65);
+  backdrop-filter: blur(6px);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: var(--radius-full);
+  padding: 0.3rem 0.65rem;
+  pointer-events: none;
 }
 
 .liveDot {

@@ -44,11 +44,22 @@ export interface ImageSummary {
   category: string;
 }
 
+/**
+ * Status of a backend job that runs in the background rather than blocking
+ * the request that started it -- segmentation, augmentation, and inference
+ * all follow this same start/poll shape (see `PUT|GET /image/working`,
+ * `POST|GET /image/working/segment`, `POST /image/working/augment` +
+ * `GET /image/working`, and `POST|GET /pipeline/infer/working`).
+ */
+export type JobStatus = "processing" | "completed" | "failed";
+
 /** The image currently loaded into the working slot (`GET /image/working`). */
 export interface WorkingImage {
-  imageId: string;
+  status: JobStatus;
+  imageId: string | null;
   /** Data URL or backend-hosted URL for the image bytes. */
-  image: string;
+  image: string | null;
+  error: string | null;
 }
 
 /**
@@ -70,6 +81,7 @@ export interface Segment {
 export interface SegmentAugmentation {
   segmentId: string;
   chalkPercent: number;
+  color?: RGBColor;
 }
 
 export interface AugmentWorkingImageRequest {
@@ -77,37 +89,49 @@ export interface AugmentWorkingImageRequest {
   segments: SegmentAugmentation[];
 }
 
-export interface AugmentWorkingImageResult {
-  imageId: string;
-  image: string;
-}
+/**
+ * Stable identifiers for swappable hold-detector implementations, per
+ * docs/diagrams/spec_rest_api.drawio.svg's PUT /pipeline sketch. Not yet
+ * wired to real distinct behavior server-side -- only "mock"
+ * (src/pipeline/hold_detector/mock_hold_detector.py) does anything today,
+ * so the real backend currently ignores this value's content (still sends
+ * it, for forward compatibility once SAM3/yolov8/etc. land for real).
+ * Left as plain `string` rather than a literal union since the actual set
+ * of valid values is decided server-side (hold_detector_factory's own
+ * registry, surfaced to the UI by {@link AvailableConfigs}/
+ * `getAvailableConfigs` below) and can grow without a frontend deploy.
+ */
+export type HoldDetectorMethod = string;
 
-/** Stable identifiers for swappable hold-detector implementations. */
-export type HoldDetectorMethod =
-  | "mask_cnn_hold_det"
-  | "yolov8"
-  | "sam3"
-  | "ground_truth";
-
-/** Stable identifiers for swappable route-classifier implementations. */
-export type RouteClassifierMethod =
-  | "color_only"
-  | "color_spatial"
-  | "dino_only"
-  | "color_spatial_dino";
+/** Same situation as {@link HoldDetectorMethod}, for route-discriminator
+ * implementations -- only "mock" (mock_route_discriminator.py) exists. */
+export type RouteClassifierMethod = string;
 
 export interface PipelineConfig {
   holdDetector: HoldDetectorMethod;
   routeClassifier: RouteClassifierMethod;
 }
 
-export type InferenceStatus = "processing" | "completed";
+/**
+ * Response of `GET /pipeline/available_configs` -- the hold-detector/
+ * route-classifier implementation names the model-select dropdowns
+ * (WallImageWorkspace) should offer, sourced from the backend's own
+ * pipeline factory registries (src/pipeline/*\/*_factory.py) rather than a
+ * hardcoded frontend list.
+ */
+export interface AvailableConfigs {
+  holdDetector: HoldDetectorMethod[];
+  routeClassifier: RouteClassifierMethod[];
+}
+
+export type InferenceStatus = JobStatus;
 
 export interface InferenceResult {
   status: InferenceStatus;
   /** One route list per input image; each route is a list of holds. */
   routes: Route[];
   inferenceMetrics: Record<string, number>;
+  error: string | null;
 }
 
 /**

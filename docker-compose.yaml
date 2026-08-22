@@ -49,11 +49,13 @@ services:
     build:
       context: .
       dockerfile: src/backend/Dockerfile
+      target: production
     restart: unless-stopped
     environment:
       ENVIRONMENT: production
       # TODO: Why are these even defined for the backend. These should be for the frontend.
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-true}
     expose:
       - "8000"
     healthcheck:

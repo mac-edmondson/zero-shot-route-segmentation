@@ -1,6 +1,6 @@
 import type {
   AugmentWorkingImageRequest,
-  AugmentWorkingImageResult,
+  AvailableConfigs,
   Coordinate,
   GalleryImage,
   ImageSummary,
@@ -23,30 +23,54 @@ export interface RouteDetectionApiClient {
   getImage(id: string, signal?: AbortSignal): Promise<ImageSummary>;
 
   getWorkingImage(signal?: AbortSignal): Promise<WorkingImage>;
-  setWorkingImage(imageId: string): Promise<WorkingImage>;
+  /**
+   * Uploads `file`'s bytes as the working image via `PUT /image/working`.
+   * The backend session then holds onto it -- later steps (segmentation,
+   * augmentation, inference) reference it implicitly instead of re-sending
+   * the file each time.
+   */
+  setWorkingImage(file: File | Blob): Promise<void>;
 
   /**
-   * Batched hold segmentation: sends the working image plus every clicked
-   * point in one request; the backend loops each point through a
-   * segmentation model (currently a mock stand-in for SAM3) and returns one
-   * polygon per point, in the same order as `coordinates`.
+   * Submits every clicked point to `POST /image/working/segment`, then
+   * polls `GET /image/working/segment` until the backend (a mock stand-in
+   * for SAM3) finishes segmenting -- or fails -- and returns one polygon
+   * per point, in the same order as `coordinates`. Only the points are
+   * sent; the working image itself was already uploaded via
+   * `setWorkingImage`.
    */
-  detectWorkingSegments(
-    image: File | Blob,
-    coordinates: Coordinate[],
-  ): Promise<Segment[]>;
+  detectWorkingSegments(coordinates: Coordinate[]): Promise<Segment[]>;
   deleteWorkingSegment(segmentId: string): Promise<void>;
 
-  augmentWorkingImage(
-    request: AugmentWorkingImageRequest,
-  ): Promise<AugmentWorkingImageResult>;
+  /**
+   * Starts augmentation via `POST /image/working/augment`, then polls
+   * `GET /image/working` until the backend finishes re-rendering the
+   * working image with the requested lighting/chalk/color changes -- or
+   * fails.
+   */
+  augmentWorkingImage(request: AugmentWorkingImageRequest): Promise<WorkingImage>;
 
-  inferWorkingPipeline(
-    config?: Partial<PipelineConfig>,
-  ): Promise<InferenceResult>;
+  /**
+   * Recognition: starts the full hold-detection + route-discrimination
+   * pipeline via `POST /pipeline/infer/working` -- no body, since the
+   * backend session already holds the working image (as left by
+   * `Finish Augment`) and the model selection set by `setPipeline` just
+   * before this is called -- then polls `GET /pipeline/infer/working`
+   * until it completes or fails.
+   */
+  inferWorkingPipeline(): Promise<InferenceResult>;
 
   getPipeline(signal?: AbortSignal): Promise<PipelineConfig>;
   setPipeline(config: PipelineConfig): Promise<PipelineConfig>;
+
+  /**
+   * Lists the hold-detector/route-classifier implementations the backend
+   * actually supports (its own pipeline factory registries) -- the
+   * model-select dropdowns in the Augment step (WallImageWorkspace) call
+   * this instead of carrying a hardcoded option list, so a newly
+   * registered method shows up there without a frontend deploy.
+   */
+  getAvailableConfigs(signal?: AbortSignal): Promise<AvailableConfigs>;
 
   /**
    * Lists the top-level categories in the external sample-image gallery

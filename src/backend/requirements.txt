@@ -1,4 +1,15 @@
 fastapi>=0.115
 uvicorn>=0.30
 python-multipart>=0.0.9
-python-dotenv>=1.0
+# Needed by src/pipeline's mock hold-detector/route-discriminator + shared
+# data models (POST /pipeline/infer/working) -- lightweight compared to the
+# torch/transformers/cv2/pycocotools the *real* SAM3 detector needs, which
+# stay out of this file on purpose (see the `base` vs `production` Docker
+# build stages).
+numpy>=1.26
+pillow>=10.0
+opencv-python-headless>=5.0.0.93
+
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.13.0
+torchvision==0.28.0

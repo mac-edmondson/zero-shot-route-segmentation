@@ -9,15 +9,15 @@ dependencies = [
     "uvicorn[standard]>=0.30",
     "python-multipart>=0.0.9",
     "httpx>=0.27",
-    "python-dotenv>=1.0",
     "huggingface-hub",
     "numpy",
-    "opencv-python",
     "pillow",
     "pycocotools",
     "torch",
     "torchvision",
     "transformers",
+    "detectron2",
+    "opencv-python-headless>=5.0.0.93",
     "ultralytics",
 ]
 
@@ -28,4 +28,21 @@ build-backend = "setuptools.build_meta"
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
+    "ruff>=0.16.4",
 ]
+
+[tool.uv.extra-build-dependencies]
+detectron2 = ["torch"]
+
+[tool.uv.sources]
+detectron2 = { git = "https://github.com/facebookresearch/detectron2.git" }
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI requires these dependency declarations in route parameter defaults.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.File"]
+
+[tool.ruff.lint.per-file-ignores]
+# Background callbacks capture every failure and expose it through session job state.
+"src/backend/routes/augmentation.py" = ["BLE001"]
+"src/backend/routes/pipeline_inference.py" = ["BLE001"]
+"src/backend/routes/segmentation.py" = ["BLE001"]

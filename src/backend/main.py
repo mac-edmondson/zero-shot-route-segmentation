@@ -1,13 +1,18 @@
 from __future__ import annotations
 
+import logging
 import os
 
-from dotenv import load_dotenv
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
-from fastapi import FastAPI  # noqa: E402
-from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+from .routes import router
 
-from .routes import router  # noqa: E402
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
+
 
 app = FastAPI(title="ROUTNet Dashboard Backend")
 

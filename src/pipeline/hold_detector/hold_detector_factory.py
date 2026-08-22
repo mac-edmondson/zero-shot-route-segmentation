@@ -22,14 +22,28 @@ _ConfigArgs = Mapping[str, Any]
 _Constructor = Callable[[_ConfigArgs], HoldDetector]
 
 
+def _create_mask_rcnn_hold_detector(config: Mapping[str, Any] = dict()) -> HoldDetector:
+    from .mask_rcnn_hold_detector import MaskRCNNHoldDetector
+
+    return MaskRCNNHoldDetector(**config)
+
+
 def _create_sam_hold_detector(config: Mapping[str, Any] = dict()) -> HoldDetector:
     from .sam3_hold_detector import SAMHoldDetector
 
     return SAMHoldDetector(**config)
 
 
+def _create_mock_hold_detector(config: Mapping[str, Any] = dict()) -> HoldDetector:
+    from .mock_hold_detector import MockHoldDetector
+
+    return MockHoldDetector(**config)
+
+
 _AVAILABLE_HOLD_DETECTORS_MAP: Mapping[str, _Constructor] = {
-    "SAM3": _create_sam_hold_detector  # TODO: Consider adding parameters we want? @joswin03
+    "Mask-RCNN": _create_mask_rcnn_hold_detector,
+    "SAM 3": _create_sam_hold_detector,  # TODO: Consider adding parameters we want? @joswin03
+    "Mock": _create_mock_hold_detector,
 }
 AVAILABLE_HOLD_DETECTORS = list(_AVAILABLE_HOLD_DETECTORS_MAP.keys())
 

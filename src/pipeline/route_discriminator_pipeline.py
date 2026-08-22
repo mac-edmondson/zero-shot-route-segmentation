@@ -1,8 +1,9 @@
-from .hold_detector import HoldDetector
-from .route_discriminator import RouteDiscriminator
-from dataclasses import dataclass
 from collections.abc import Sequence
-from .interfaces.data_models import Route, Image
+from dataclasses import dataclass
+
+from .hold_detector import HoldDetector
+from .interfaces.data_models import Image, Route
+from .route_discriminator import RouteDiscriminator
 
 
 @dataclass(frozen=True)
@@ -27,7 +28,9 @@ class RouteDiscriminatorPipeline:
     def get_routes(self, images: Sequence) -> Sequence[Sequence[Route]]:
         """Return one detected-route list for every input image."""
         self._last_holds = self.hold_detector.get_holds(images=images)
-        self._last_routes = self.route_discriminator.get_routes(images=images, holds=self._last_holds)
+        self._last_routes = self.route_discriminator.get_routes(
+            images=images, holds=self._last_holds
+        )
         return self._last_routes
 
     @staticmethod
@@ -36,7 +39,7 @@ class RouteDiscriminatorPipeline:
     ) -> Sequence[Image]:
         """Render route overlays on an image."""
         return RouteDiscriminator.mark_routes(images, routes)
-    
+
     @staticmethod
     def mark_holds(
         images: Sequence[Image], routes: Sequence[Sequence[Route]]
