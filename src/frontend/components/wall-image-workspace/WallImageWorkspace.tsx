@@ -26,6 +26,18 @@ import styles from "./WallImageWorkspace.module.css";
  */
 const MODEL_SELECT_REVEAL_MS = 1875;
 
+/**
+ * Same wait as MODEL_SELECT_REVEAL_MS above, but for going straight to
+ * Finish Augment with zero segments marked (hold detection skipped
+ * entirely). SegmentPanel's shrink/reform sequence only ever plays when
+ * there were segments to animate away -- with none, `closing` just plays
+ * its own plain opacity/filter fade (see SegmentPanel.module.css's
+ * `.closing`, 450ms) instead, so waiting the full 1875ms here left the
+ * model pickers appearing well after that fade had already finished --
+ * the "bit late" this constant fixes.
+ */
+const MODEL_SELECT_REVEAL_MS_NO_SEGMENTS = 450;
+
 /** Must match .modelSelectPanel's own transition-duration in
  * WallImageWorkspace.module.css -- handleGoToRecognition plays that same
  * leave transition (the same way handleBackToAugment already does) before
@@ -211,6 +223,15 @@ export function WallImageWorkspace() {
   const modelSlideBackFromRectRef = useRef<DOMRect | null>(null);
   const [showLockedModels, setShowLockedModels] = useState(false);
 
+  // Set by handleFinishAugment, read by the model-select reveal effect
+  // below -- whether there were any segments to shrink/reform away at the
+  // moment Finish Augment was pressed, which is what picks between
+  // MODEL_SELECT_REVEAL_MS and its _NO_SEGMENTS counterpart. A ref, not a
+  // dependency read off `segments` directly, so this stays pinned to that
+  // one moment rather than drifting if `segments` were ever to change
+  // again before the timeout fires.
+  const hadSegmentsOnFinishRef = useRef(false);
+
   // Which route's holds are currently drawn on the image. selectedRouteId
   // stays set through "exiting" (it hasn't been replaced yet at that
   // point); queuedRouteId is only meaningful while exiting: null means "go
@@ -332,7 +353,10 @@ export function WallImageWorkspace() {
   // trigger" entrance below has a real "before" frame to animate from.
   useEffect(() => {
     if (!augmentDone) return;
-    const revealTimeout = setTimeout(() => setShowModelSelect(true), MODEL_SELECT_REVEAL_MS);
+    const revealDelay = hadSegmentsOnFinishRef.current
+      ? MODEL_SELECT_REVEAL_MS
+      : MODEL_SELECT_REVEAL_MS_NO_SEGMENTS;
+    const revealTimeout = setTimeout(() => setShowModelSelect(true), revealDelay);
     return () => clearTimeout(revealTimeout);
   }, [augmentDone]);
 
@@ -469,10 +493,32 @@ export function WallImageWorkspace() {
     return () => clearTimeout(timeout);
   }, [routeHighlightPhase, queuedRouteId]);
 
-  const visibleHolds =
-    routeHighlightPhase !== "idle" && selectedRouteId != null
-      ? (holdsByRoute.get(selectedRouteId) ?? [])
-      : [];
+  const visibleHolds = useMemo(
+    () =>
+      routeHighlightPhase !== "idle" && selectedRouteId != null
+        ? (holdsByRoute.get(selectedRouteId) ?? [])
+        : [],
+    [routeHighlightPhase, selectedRouteId, holdsByRoute],
+  );
+
+  // Same issue, same fix as ImageCanvas's polygonPointsById -- Mask-RCNN's
+  // contours are effectively pixel-precise (hundreds to low-thousands of
+  // points per hold), so serializing one into SVG's `points` format is
+  // real work. Left inline in JSX, that work reran for every hold, on
+  // every render of this whole component -- not just the one render where
+  // the highlight actually mounts, but every later one too (hovering a
+  // hold in the list, selecting a different one, anything else in this
+  // fairly large component that triggers a re-render). With a wall that
+  // has enough holds, that recurring cost is exactly what shows up as a
+  // visible stutter/"blink" partway through the staggered reveal below.
+  // Memoized on `visibleHolds` itself (a stable reference from the
+  // memoized holdsByRoute map, unless the route selection actually
+  // changes) so this only redoes the work when the visible set of holds
+  // actually changes.
+  const visibleHoldPoints = useMemo(
+    () => visibleHolds.map((hold) => hold.polygon.points.map((p) => `${p.x},${p.y}`).join(" ")),
+    [visibleHolds],
+  );
 
   const loadImage = useCallback(async (file: File | Blob) => {
     setLoading(true);
@@ -620,7 +666,22 @@ export function WallImageWorkspace() {
   // against whatever Finish Augment last left there.
   function buildAugmentationPayload() {
     return {
-      lightingPercent: lighting,
+      // `lighting` is this UI's own 0-100 scale, 50 = neutral/no change --
+      // same convention ImageCanvas's live CSS preview uses (see its
+      // `(lightingPercent - 50) / 50` filter formula). The backend's
+      // AugmentWorkingImageRequest.lighting_percent is a *different* scale
+      // (see src/backend/schemas.py): -100-100, 0 = neutral, then divided
+      // by 100 into LightingAugmentationParams.intensity (src/pipeline/
+      // interfaces/augmentation.py) -- which change_lighting applies as
+      // `values += (255 - values) * intensity` (src/pipeline/
+      // preprocessing/augmentation_suite.py), i.e. a genuinely different
+      // neutral point. Sent unconverted, the slider's own neutral (50)
+      // would arrive as intensity 0.5 -- pushing every pixel halfway to
+      // white on every Finish Augment, even with the slider never touched.
+      // This is the same (lighting - 50) / 50 normalization ImageCanvas
+      // already applies, just rescaled to the backend's ±100 range instead
+      // of the CSS filter's ±0.9.
+      lightingPercent: (lighting - 50) * 2,
       segments: segments.map((segment) => ({
         segmentId: segment.segmentId,
         chalkPercent: chalkBySegmentId[segment.segmentId] ?? 0,
@@ -637,11 +698,23 @@ export function WallImageWorkspace() {
     setLoading(true);
     setError(null);
     try {
-      await apiClient.augmentWorkingImage(buildAugmentationPayload());
+      const augmented = await apiClient.augmentWorkingImage(buildAugmentationPayload());
+      // From here on (model-select, Recognition) the canvas shows the real
+      // augmented image the backend just produced -- and, critically, the
+      // exact same image /pipeline/infer/working runs against -- rather
+      // than continuing to show the original upload with lighting/chalk/
+      // color only *simulated* on top via ImageCanvas's CSS filter and SVG
+      // overlays. Those live-preview props are neutralized below once
+      // augmentDone flips, so this doesn't end up double-applying the
+      // effect on top of pixels that already have it baked in.
+      if (augmented.image) {
+        setImageSrc(augmented.image);
+      }
       // Stays on this same page -- no navigation. The step indicator shifts
       // to Recognition (shown as in-progress, not complete -- see
       // `handingOff` below) and the toolbar/segment panel fade out; nothing
       // else moves or resizes.
+      hadSegmentsOnFinishRef.current = segments.length > 0;
       setAugmentDone(true);
     } catch {
       setError("Couldn't finish augmentation. Try again.");
@@ -819,6 +892,19 @@ export function WallImageWorkspace() {
             <button type="button" className={styles.changeModelButton} onClick={handleChangeModel}>
               Change model
             </button>
+            {/* Right end of this same bar -- same handleBackToAugment (full
+                reversal of the augment->model-select->recognition arc) and
+                same styling as the standalone .backToAugmentSlot button
+                above, just docked in this row instead of floating alone
+                now that the row itself is what's on screen at this point. */}
+            <Button
+              type="button"
+              variant="primary"
+              className={styles.lockedModelsBackButton}
+              onClick={handleBackToAugment}
+            >
+              Back to Augment
+            </Button>
           </div>
         )}
 
@@ -844,10 +930,17 @@ export function WallImageWorkspace() {
         <div className={styles.canvasColumn}>
           <ImageCanvas
             imageSrc={imageSrc}
-            lightingPercent={lighting}
+            // Live simulation while still editing (lightingPercent's CSS
+            // filter, chalkBySegmentId/colorBySegmentId's SVG overlays) --
+            // once Finish Augment lands the real augmented image in
+            // imageSrc above, those effects are already baked into its
+            // pixels, so continuing to apply them here would double them
+            // up. Neutral values past that point: 50 is lightingPercent's
+            // own documented no-op, {} shows no chalk/color fill.
+            lightingPercent={augmentDone ? 50 : lighting}
             segments={segments}
-            chalkBySegmentId={chalkBySegmentId}
-            colorBySegmentId={colorBySegmentId}
+            chalkBySegmentId={augmentDone ? {} : chalkBySegmentId}
+            colorBySegmentId={augmentDone ? {} : colorBySegmentId}
             pickingColor={pickingColorSegmentId !== null}
             onPickColor={handlePickColor}
             pendingPoints={pendingPoints}
@@ -887,7 +980,7 @@ export function WallImageWorkspace() {
                         ]
                           .filter(Boolean)
                           .join(" ")}
-                        points={hold.polygon.points.map((p) => `${p.x},${p.y}`).join(" ")}
+                        points={visibleHoldPoints[index]}
                         style={leaving ? undefined : { animationDelay: `${index * ROUTE_HOLD_REVEAL_STAGGER_MS}ms` }}
                       />
                     );
