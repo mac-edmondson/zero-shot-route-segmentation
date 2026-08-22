@@ -17,6 +17,14 @@ const ZOOM_STEP = 0.25;
  * as a pan rather than a click -- see handleImageWrapMouseDown. */
 const PAN_DRAG_THRESHOLD = 4;
 
+/** How much one wheel-event's deltaY moves the zoom multiplicatively (see
+ * handleWheel) -- e.g. a typical mouse-wheel notch (deltaY around 100)
+ * works out to roughly +/-20% zoom, while a trackpad's many small-delta
+ * events during a single pinch/scroll gesture each nudge it just a little,
+ * summing to a smooth continuous zoom rather than jumping in fixed steps
+ * like the keyboard shortcut does. */
+const ZOOM_WHEEL_SENSITIVITY = 0.0025;
+
 /** Chalk fill's opacity at 100% chalkPercent -- kept short of fully opaque
  * so the hold's own outline/fill stays visible underneath even at max. */
 const MAX_CHALK_OPACITY = 0.8;
@@ -219,6 +227,15 @@ export function ImageCanvas({
   showHoldOutline = true,
   overlay,
 }: ImageCanvasProps) {
+  // -1..1, matching the backend's own LightingAugmentationParams.intensity
+  // (see src/backend/services/dashboard.py: request.lighting_percent / 100,
+  // where lighting_percent is already WallImageWorkspace's
+  // (lighting - 50) * 2). lightingPercent itself stays on this component's
+  // own 0-100/50-neutral scale -- this is just that same value re-expressed
+  // as a fraction, for the lighting overlay below to use directly as an
+  // alpha.
+  const lightingIntensity = (lightingPercent - 50) / 50;
+
   // .imageWrap has no height of its own -- it shrink-wraps to the image
   // (see the CSS) so overlays/markers positioned against it stay pinned to
   // the actual visible image, not empty letterboxed space around it. But
@@ -340,6 +357,50 @@ export function ImageCanvas({
     window.addEventListener("mousemove", handleMove);
     window.addEventListener("mouseup", handleUp);
   }
+
+  /** Trackpad/mouse-wheel zoom and pan over the image -- the other half of
+   * the zoom/pan gesture set alongside the Ctrl+/Ctrl- shortcut and
+   * drag-to-pan above. A native (non-passive) listener, not React's
+   * onWheel prop -- React has attached wheel/touchmove listeners passively
+   * by default since v17 (for scroll performance), which makes
+   * event.preventDefault() inside a JSX onWheel handler a silent no-op;
+   * this needs a real preventDefault to stop the page zooming/scrolling
+   * along with the image, so it's wired up here instead, the same way the
+   * keydown listener above is.
+   *
+   * Browsers report a trackpad pinch as a wheel event with ctrlKey true
+   * (there's no separate "pinch" event), so checking ctrlKey here handles
+   * both a real Ctrl+scroll *and* a pinch gesture with the same code path
+   * -- zooming, centered the same way the keyboard shortcut is rather than
+   * anchored to the cursor, so all three zoom inputs (keyboard, wheel,
+   * pinch) agree on what "zoom" visually does. Plain wheel/two-finger
+   * scroll (no ctrlKey) pans instead, following the scroll direction the
+   * same way a map or canvas app does (scroll down -> content shifts up).
+   */
+  useEffect(() => {
+    const wrap = imageWrapRef.current;
+    if (!wrap) return;
+    function handleWheel(event: WheelEvent) {
+      if (event.ctrlKey) {
+        event.preventDefault();
+        const nextZoom = Math.min(
+          ZOOM_MAX,
+          Math.max(ZOOM_MIN, zoom * Math.exp(-event.deltaY * ZOOM_WHEEL_SENSITIVITY)),
+        );
+        setZoom(nextZoom);
+        setPan((current) => clampPan(current, nextZoom));
+        return;
+      }
+      if (zoom <= 1) return;
+      event.preventDefault();
+      setPan((current) => clampPan({ x: current.x - event.deltaX, y: current.y - event.deltaY }, zoom));
+    }
+    wrap.addEventListener("wheel", handleWheel, { passive: false });
+    return () => wrap.removeEventListener("wheel", handleWheel);
+    // Re-bound whenever zoom changes (same reasoning as the keydown
+    // effect's own comment) or the image itself changes (imageWrapRef only
+    // has an element to attach to once imageSrc is truthy).
+  }, [zoom, imageSrc]);
   // ---------------------------------------------------------------------
 
   // The live "drop" cursor while picking a color (see the JSX below and
@@ -574,7 +635,6 @@ export function ImageCanvas({
               .filter(Boolean)
               .join(" ")}
             style={{
-              filter: `brightness(${1 + ((lightingPercent - 50) / 50) * 0.9})`,
               // Overrides .image's cursor once zoomed in -- panning takes
               // over as the primary drag gesture at that point, so the
               // crosshair/none cursors that signal click-to-add-point or
@@ -585,6 +645,31 @@ export function ImageCanvas({
             onMouseMove={handleImageMouseMove}
             onMouseLeave={handleImageMouseLeave}
           />
+          {lightingIntensity !== 0 && (
+            // Matches the backend's own change_lighting math exactly (see
+            // src/pipeline/preprocessing/augmentation_suite.py) rather than
+            // approximating it with a CSS brightness() filter, which used
+            // to live here -- brightness() is *multiplicative*
+            // (value * factor), so shadows/blacks barely move even at max
+            // intensity; the backend instead *blends every pixel toward
+            // white or black*: value + (target - value) * intensity. A
+            // solid white/black layer, alpha-blended normally at
+            // opacity = intensity, is mathematically identical to that
+            // per-pixel blend (that's literally what alpha compositing
+            // computes), so this overlay is pixel-for-pixel what Finish
+            // Augment will actually produce -- not a lookalike. Drawn right
+            // after the image, before the polygon/chalk overlay below, so
+            // chalk still visually sits on top of the lit/darkened surface
+            // rather than under it.
+            <span
+              className={styles.lightingOverlay}
+              style={{
+                background: lightingIntensity > 0 ? "#fff" : "#000",
+                opacity: Math.min(1, Math.abs(lightingIntensity)),
+              }}
+              aria-hidden
+            />
+          )}
           {zoom > 1 && (
             <span className={styles.zoomBadge} aria-hidden>
               {Math.round(zoom * 100)}%

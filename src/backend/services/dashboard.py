@@ -131,6 +131,19 @@ def _api_polygon(polygon: PixelPolygon, image: PILImage.Image) -> Polygon:
     )
 
 
+# change_color's own blend strength -- kept fixed rather than reusing a
+# segment's chalk_percent (as this used to do) since the two are unrelated
+# augmentations with independent frontend controls (SegmentCard's Chalk
+# slider vs. its "Choose color" eyedropper): reusing chalk_percent meant a
+# color picked on a segment whose chalk was still at its default 0% sent
+# ColorAugmentationParams(color, 0), which change_color (see
+# augmentation_suite.py) treats as "no-op, return unchanged" -- so the
+# color silently never reached the image at all. No UI control offers a
+# partial color strength either, so a full-strength blend is the correct
+# fixed value here, not just a stand-in default.
+COLOR_INTENSITY = 1.0
+
+
 def augment_image(
     image: PILImage.Image,
     request: AugmentWorkingImageRequest,
@@ -164,7 +177,7 @@ def augment_image(
             result = suite.change_color(
                 result,
                 [polygon],
-                ColorAugmentationParams(color, augmentation.chalk_percent / 100),
+                ColorAugmentationParams(color, COLOR_INTENSITY),
             )
 
     if request.lighting_percent:

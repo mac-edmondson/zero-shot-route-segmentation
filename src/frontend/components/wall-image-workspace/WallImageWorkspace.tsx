@@ -151,6 +151,18 @@ function useFlipSlide(
 export function WallImageWorkspace() {
   const [imageId, setImageId] = useState<string | null>(null);
   const [imageSrc, setImageSrc] = useState<string | null>(null);
+  // The true pre-augmentation upload, kept aside so handleBackToAugment can
+  // restore it -- `imageSrc` itself gets overwritten with the real
+  // *augmented* image once Finish Augment lands (see handleFinishAugment),
+  // which is correct while looking at Recognition, but going back to edit
+  // needs the original back underneath: ImageCanvas's live lighting/chalk/
+  // color preview overlays are computed as if `imageSrc` were still the
+  // unaugmented base, so previewing again on top of the already-baked
+  // result would double the effect (and the slider could never visually
+  // get back to "no change" -- exactly the bug this fixes -- since 50%
+  // stops meaning "identical to what's showing" the moment what's showing
+  // is the augmented image instead of the original one).
+  const originalImageSrcRef = useRef<string | null>(null);
   const [segments, setSegments] = useState<Segment[]>([]);
   /** Points clicked but not yet sent for detection. */
   const [pendingPoints, setPendingPoints] = useState<Coordinate[]>([]);
@@ -543,6 +555,7 @@ export function WallImageWorkspace() {
 
       setImageId(createLocalImageId());
       setImageSrc(dataUrl);
+      originalImageSrcRef.current = dataUrl;
       setSegments([]);
       setPendingPoints([]);
       setChalkBySegmentId({});
@@ -732,8 +745,23 @@ export function WallImageWorkspace() {
       // start inference with no body -- it runs against whatever working
       // image + augmentation + config the session already has.
       await apiClient.setPipeline({ holdDetector: holdModel, routeClassifier: routeModel });
-      const result = await apiClient.inferWorkingPipeline();
+      // Run alongside inference, not after it -- GET /image/working doesn't
+      // depend on the inference result, it's just the same "what does the
+      // backend currently have as the working image" fetch handleFinishAugment
+      // already uses its own augmentWorkingImage response for. That earlier
+      // swap covers the common case already, but the route/hold overlay
+      // shown here should always be paired with an image explicitly
+      // confirmed from the backend at this exact moment, via the actual
+      // GET /image/working endpoint, rather than only ever trusting a
+      // snapshot captured back when Finish Augment ran.
+      const [result, workingImage] = await Promise.all([
+        apiClient.inferWorkingPipeline(),
+        apiClient.getWorkingImage(),
+      ]);
       setRecognitionResult(result);
+      if (workingImage.image) {
+        setImageSrc(workingImage.image);
+      }
       setPastRecognition(true);
       // Measured now, while the row is still on-screen at its normal
       // position -- this is the FLIP slide's "from" rect (see
@@ -792,6 +820,13 @@ export function WallImageWorkspace() {
   // that built in (only ever mounted forward), so their own reverse fades
   // are played here explicitly before unmounting them.
   function handleBackToAugment() {
+    // Swap the real (post-augmentation) image back out for the original --
+    // see originalImageSrcRef's own comment for why this has to happen
+    // before augmentDone flips back to false and ImageCanvas's live preview
+    // overlays reactivate.
+    if (originalImageSrcRef.current) {
+      setImageSrc(originalImageSrcRef.current);
+    }
     setAugmentDone(false);
     setRecognitionDone(false);
     setPastRecognition(false);

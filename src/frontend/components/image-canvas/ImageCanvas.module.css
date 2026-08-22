@@ -84,7 +84,6 @@
   object-fit: contain;
   cursor: crosshair;
   display: block;
-  transition: filter var(--dur-fast) linear;
   /* Safari doesn't always respect the <img draggable={false}> attribute on
      its own (see ImageCanvas.tsx) -- this is the CSS-level version of the
      same "don't start a native image drag on mousedown" guard, needed so
@@ -98,6 +97,20 @@
    carried-over image) -- not clickable, so no crosshair. */
 .imageStatic {
   cursor: default;
+}
+
+/* Live lighting preview -- see ImageCanvas.tsx's lightingIntensity comment
+   for why this is a plain white/black layer rather than a CSS filter: it's
+   not an approximation of the backend's change_lighting, it's the exact
+   same math (alpha-blending a solid color is a per-pixel lerp toward that
+   color, which is exactly what the backend does). Sits directly over the
+   image, under the polygon/chalk overlay so chalk still reads as sitting
+   on top of the lit surface, not under it. */
+.lightingOverlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-fast) linear;
 }
 
 /* A segment card's "Choose color" is waiting on a click here -- the system
