@@ -4,6 +4,7 @@ from PIL import ImageDraw
 
 from ..interfaces.data_models import Route
 from ..interfaces.errors import BatchAlignmentError
+from .route_discriminator import _kmeans
 
 
 class ColorOnlyRouteDiscriminator:
@@ -44,7 +45,7 @@ class ColorOnlyRouteDiscriminator:
                 continue
             features = np.array([self._color(image, h) for h in batch])
             k = min(self.n_clusters, len(batch))
-            labels = self._kmeans(features, k)
+            labels = _kmeans(features, k, self.random_state)
             groups = {}
             for h, label in zip(batch, labels):
                 groups.setdefault(int(label), set()).add(h)
@@ -58,22 +59,6 @@ class ColorOnlyRouteDiscriminator:
             m, [np.array([(p.x, p.y) for p in hold.polygon.points], np.int32)], 1
         )
         return a[m.astype(bool)].mean(0)
-
-    def _kmeans(self, x, k):
-        rng = np.random.default_rng(self.random_state)
-        centers = x[rng.choice(len(x), k, replace=False)]
-        for _ in range(100):
-            labels = ((x[:, None] - centers) ** 2).sum(2).argmin(1)
-            new = np.array(
-                [
-                    x[labels == i].mean(0) if np.any(labels == i) else centers[i]
-                    for i in range(k)
-                ]
-            )
-            if np.allclose(new, centers):
-                break
-            centers = new
-        return labels
 
     @staticmethod
     def mark_routes(images, routes):

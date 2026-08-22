@@ -34,5 +34,9 @@ Project\ stuff/
 
 #output files
 data/test-rcnn-pipeline
+data/test-dino-pipeline
 data/roboflow_dataset
 data/test-yolo-pipeline
+
+# Gated model weights; download after accepting the upstream license
+models/dinov3/
