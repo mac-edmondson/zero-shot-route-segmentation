@@ -38,10 +38,10 @@ def test_hold_centroid_and_immutable_attributes():
 
 
 def test_hold_crop_and_color_sampling():
-    image = Image.new("RGB", (8, 8))
-    image.putpixel((2, 2), (10, 20, 30))
+    image = Image.new("RGB", (8, 8), (10, 20, 30))
+    image.putpixel((2, 2), (0, 0, 0))
     hold = Hold(triangle())
     assert hold.get_color(image) == RGBColor(10, 20, 30)
     crop = hold.get_crop(image)
     assert crop.size == (5, 5)
-    assert crop.getpixel((1, 1)) == (10, 20, 30)
+    assert crop.getpixel((1, 1)) == (0, 0, 0)

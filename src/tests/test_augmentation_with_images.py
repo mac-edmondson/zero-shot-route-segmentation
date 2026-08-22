@@ -1,14 +1,15 @@
+from collections.abc import Sequence
 from pathlib import Path
 
-import pytest
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 
 from pipeline.hold_detector.mask_rcnn_hold_detector import MaskRCNNHoldDetector
+from pipeline.interfaces.data_models import Hold
 from pipeline.preprocessing.augmentation_suite import (
+    AugmentationPlan,
     ChalkAugmentation,
     ColorAugmentation,
     LightingAugmentation,
-    AugmentationPlan,
 )
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -17,7 +18,39 @@ OUTPUT_DIR = ROOT / "data" / "test-augmentation-with-images"
 
 # These values were selected through experimentation to make a good test
 HOLD_TO_USE_COLOR = 5
-HOLD_TO_AUGMENT = 15
+HOLD_TO_AUGMENT = 23
+
+
+def mark_holds(image: Image.Image, holds: Sequence[Hold]) -> Image.Image:
+    """Render hold polygons and their detector indexes for visual debugging."""
+    overlay = image.convert("RGB").copy()
+    fill_overlay = Image.new("RGBA", overlay.size, (0, 0, 0, 0))
+    fill_draw = ImageDraw.Draw(fill_overlay)
+    for hold in holds:
+        points = [(point.x, point.y) for point in hold.polygon.points]
+        fill_draw.polygon(points, fill=(255, 80, 0, 102))
+    overlay = Image.alpha_composite(overlay.convert("RGBA"), fill_overlay).convert(
+        "RGB"
+    )
+
+    draw = ImageDraw.Draw(overlay)
+    font = ImageFont.load_default(size=18)
+    for index, hold in enumerate(holds):
+        points = [
+            (point.x, point.y)
+            for point in (*hold.polygon.points, hold.polygon.points[0])
+        ]
+        draw.line(points, fill=(255, 80, 0), width=5)
+        draw.text(
+            (hold.centroid.x, hold.centroid.y),
+            str(index),
+            font=font,
+            fill="white",
+            stroke_width=2,
+            stroke_fill="black",
+            anchor="mm",
+        )
+    return overlay
 
 
 # @pytest.mark.skip(reason="Do not run inference every test run")
@@ -32,14 +65,9 @@ def test_real_pipeline_marks_detected_routes() -> None:
         [[holds_l[0][HOLD_TO_AUGMENT]], [holds_l[0][HOLD_TO_USE_COLOR]]]
     )  # Use a single hold to mess around with augmenting
     marked_images = [
-        (label, marked_image)
-        for label, marked_image in zip(
-            [
-                "all_holds",
-                "to_agument",
-                "to_select_color",
-            ],
-            hold_detector.mark_holds([image] * len(holds_l), holds_l),
+        (label, mark_holds(image, holds))
+        for label, holds in zip(
+            ["all_holds", "to_agument", "to_select_color"], holds_l, strict=True
         )
     ]
 
@@ -51,7 +79,7 @@ def test_real_pipeline_marks_detected_routes() -> None:
 
     # Print the hold indexes for some debugging if needed
     for i, hold in enumerate(holds_l[0]):
-        print(f"Hold {i}: {hold}")
+        print(f"Hold {i}: {hold.centroid}")
 
     def _save_augmented_image(name: str, image: Image.Image):
         output_path = OUTPUT_DIR / (name + ".jpg")

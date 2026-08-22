@@ -111,7 +111,7 @@ def change_color(
     targets: Sequence[AugmentationTarget],
     colors: Sequence[RGBColor],
 ) -> Image:
-    """Recolour targets while retaining their pixel-level lightness."""
+    """Recolour targets while preserving local shading around target lightness."""
     polygons, colors = _aligned(targets, colors, "colors")
     if any(not isinstance(color, RGBColor) for color in colors):
         raise TypeError("colors must contain RGBColor values.")
@@ -125,8 +125,17 @@ def change_color(
             np.asarray([[[color.r, color.g, color.b]]], dtype=np.uint8),
             cv2.COLOR_RGB2HLS,
         )[0, 0]
-        hls[mask, 0] = target[0]
-        hls[mask, 2] = target[2]
+        selected_hls = hls[mask]
+        selected_hls[:, 1] = np.clip(
+            selected_hls[:, 1].astype(np.float32)
+            - np.median(selected_hls[:, 1])
+            + target[1],
+            0,
+            255,
+        )
+        selected_hls[:, 0] = target[0]
+        selected_hls[:, 2] = target[2]
+        hls[mask] = selected_hls
     return PILImage.fromarray(cv2.cvtColor(hls, cv2.COLOR_HLS2RGB), mode="RGB")
 
 

@@ -102,6 +102,15 @@ def test_change_color_preserves_target_lightness() -> None:
     assert result.getpixel((0, 0)) == image.getpixel((0, 0))
 
 
+def test_change_color_recenters_white_hold_lightness() -> None:
+    image = PILImage.new("RGB", (8, 8), (240, 240, 240))
+    target = RGBColor(20, 100, 220)
+
+    result = change_color(image, [_polygon()], [target])
+
+    assert result.getpixel((2, 2)) == (20, 100, 220)
+
+
 def test_lighting_uses_the_frontend_brightness_scale() -> None:
     image = PILImage.new("RGB", (1, 1), (10, 20, 30))
     assert change_lighting(image, -1).getpixel((0, 0)) == (0, 0, 0)
