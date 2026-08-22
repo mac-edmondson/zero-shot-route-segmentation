@@ -69,7 +69,7 @@ def add_chalk(
     *,
     seed: int | None = None,
 ) -> Image:
-    """Whiten each target with smooth, patchy chalk."""
+    """Whiten bright target surfaces while preserving dark hardware."""
     if seed is not None and (isinstance(seed, bool) or not isinstance(seed, int)):
         raise TypeError("seed must be an integer or None.")
     polygons, strengths = _aligned(targets, strengths, "strengths")
@@ -83,15 +83,26 @@ def add_chalk(
         mask = _mask(source.size, polygon)
         if not mask.any():
             continue
+        # Coarse noise produces hold-scale smudges instead of pixel-level static.
         height, width = mask.shape
         texture = rng.uniform(
             0,
             1,
             size=(max(1, height // 24), max(1, width // 24)),
         ).astype(np.float32)
+        # Bicubic upscaling makes density transitions continuous; squaring keeps
+        # most chalk faint while retaining a few visibly dense patches.
         alpha = cv2.resize(texture, (width, height), interpolation=cv2.INTER_CUBIC)
         alpha = np.clip(alpha, 0, 1) ** 2
-        values[mask] += (255 - values[mask]) * (alpha[mask, None] * strength)
+        # Chalk should not fill bolt holes or deep recesses. Fade from no chalk
+        # below 10% luminance to full chalk above 40% luminance.
+        selected_values = values[mask]
+        luminance = np.dot(selected_values, (0.2126, 0.7152, 0.0722)) / 255
+        visibility = np.clip((luminance - 0.1) / 0.3, 0, 1)
+        alpha = alpha[mask] * visibility
+        # Blend only the selected bright surface pixels toward white.
+        selected_values += (255 - selected_values) * alpha[:, None] * strength
+        values[mask] = selected_values
     return _from_array(values)
 
 

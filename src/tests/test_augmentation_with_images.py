@@ -70,10 +70,15 @@ def test_real_pipeline_marks_detected_routes() -> None:
     )
 
     # 2. Augment the original image to add chalk augmentation on a hold
-    chalk_augmentation = ChalkAugmentation((hold_to_augment,), (0.5,))
+    chalk_augmentation = ChalkAugmentation((hold_to_augment,), (1.0,))
     _save_augmented_image(
-        "chalk_augmented_image",
+        "chalk_augmented_image_1",
         AugmentationPlan((chalk_augmentation,), seed=0).apply(image),
+    )
+    chalk_augmentation = ChalkAugmentation((color_picker_hold,), (0.7,))
+    _save_augmented_image(
+        "chalk_augmented_image_2",
+        AugmentationPlan((chalk_augmentation,), seed=12).apply(image),
     )
 
     # 3. Augment the original image to add chalk augmentation on a hold

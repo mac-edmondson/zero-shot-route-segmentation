@@ -73,6 +73,24 @@ def test_add_chalk_uses_smooth_patchy_texture() -> None:
     assert adjacent_difference < 4
 
 
+def test_add_chalk_preserves_black_hardware() -> None:
+    values = np.full((96, 96, 3), 120, dtype=np.uint8)
+    values[48, 48] = 0
+    image = PILImage.fromarray(values, mode="RGB")
+    polygon = Polygon(
+        (
+            Coordinate(1, 1),
+            Coordinate(94, 1),
+            Coordinate(94, 94),
+            Coordinate(1, 94),
+        )
+    )
+
+    result = add_chalk(image, [polygon], [1], seed=0)
+    assert result.getpixel((48, 48)) == (0, 0, 0)
+    assert result.getpixel((47, 48))[0] > 200
+
+
 def test_change_color_preserves_target_lightness() -> None:
     image = _image()
     result = change_color(image, [_polygon()], [RGBColor(220, 20, 20)])
