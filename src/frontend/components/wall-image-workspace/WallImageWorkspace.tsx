@@ -941,11 +941,58 @@ export function WallImageWorkspace() {
     }
   }
 
+  // Clicking the logo (see AppHeader's onLogoClick) -- back to this page's
+  // own "landing" state, the same "Select a wall image to begin" screen
+  // shown on first load. Purely local: this app is one component for its
+  // whole lifetime (see the docstring above), so there's no route to
+  // navigate to, and nothing here needs the backend -- the session's own
+  // working image/segments are just left as they were, the same way
+  // closing and reopening a tab wouldn't itself clear server-side state
+  // either. A later "load image" (loadImage) already overwrites all of
+  // that on its own, the normal way.
+  function handleGoToLanding() {
+    setImageId(null);
+    setImageSrc(null);
+    originalImageSrcRef.current = null;
+    setSegments([]);
+    setPendingPoints([]);
+    setDetecting(false);
+    setChalkBySegmentId({});
+    setColorBySegmentId({});
+    setPickingColorSegmentId(null);
+    setLightingIntensity(0);
+    setWebcamActive(false);
+    setGalleryOpen(false);
+    setGallerySelecting(false);
+    setLoading(false);
+    setError(null);
+    setAugmentDone(false);
+    setShowModelSelect(false);
+    setModelSelectEntered(false);
+    setHoldModel(null);
+    setRouteModel(null);
+    setInferring(false);
+    setLoaderPhase("idle");
+    setRecognitionResult(null);
+    setRecognitionDone(false);
+    setRoutesPanelEntered(false);
+    setPastRecognition(false);
+    setShowLockedModels(false);
+    modelSlideFromRectRef.current = null;
+    modelSlideBackFromRectRef.current = null;
+    setSelectedRouteId(null);
+    setRouteHighlightPhase("idle");
+    setQueuedRouteId(null);
+    setSelectedHoldIndex(null);
+    hadSegmentsOnFinishRef.current = false;
+  }
+
   return (
     <div className={styles.workspace}>
       <AppHeader
         title="ROUTNet"
         titleRef={logoRef}
+        onLogoClick={handleGoToLanding}
         right={
           <StepIndicator
             current={recognitionDone ? "recognition" : "augment"}
@@ -1091,6 +1138,7 @@ export function WallImageWorkspace() {
             pendingPoints={pendingPoints}
             webcamActive={webcamActive}
             loading={loading || detecting}
+            logoRef={logoRef}
             onCaptureFrame={loadImage}
             onWebcamError={(message) => {
               setError(message);

@@ -25,9 +25,33 @@ def _set_working_image(session: SessionState, image: Any) -> None:
         session.inference_result = None
 
 
+def _reset_working_image_keep_segments(session: SessionState, image: Any) -> None:
+    """Same as _set_working_image, but leaves session.segments alone.
+
+    Used by "Back to Augment" (see WallImageWorkspace.tsx's
+    handleBackToAugment): it re-PUTs the original upload here to reset
+    session.working_image back to the true original.
+    """
+    with session.lock:
+        session.working_image = image
+        session.working_image_id = new_image_id()
+        session.generation += 1
+        session.segment_job = JobState()
+        session.image_job = JobState()
+        session.inference_job = JobState()
+        session.inference_result = None
+
+
 @router.put("/image/working", status_code=200)
 async def set_working_image(
     image: UploadFile = File(...),
+    # Query param (no Form()/Query() marker needed -- FastAPI infers query
+    # for a plain-typed param on a route that already consumes File/Form
+    # body parts): PUT /image/working?keep_segments=true. Defaults to False
+    # so every existing caller (a real new upload) keeps today's behavior
+    # unchanged; only handleBackToAugment's re-PUT of the original image
+    # passes true.
+    keep_segments: bool = False,
     session: SessionState = Depends(get_session),
 ) -> None:
     """Decode and store a multipart working-image upload."""
@@ -35,7 +59,10 @@ async def set_working_image(
         uploaded = decode_image(await image.read())
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    _set_working_image(session, uploaded)
+    if keep_segments:
+        _reset_working_image_keep_segments(session, uploaded)
+    else:
+        _set_working_image(session, uploaded)
 
 
 @router.get("/image/working", response_model=WorkingImageResponse)

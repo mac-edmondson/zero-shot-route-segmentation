@@ -403,11 +403,11 @@
   transform: translateY(0) scale(1);
 }
 
-/* Recognition loader -- see loaderPhase in the component. Shares the same
-   grid cell as SegmentPanel/modelSelectPanel/routesPanel (via
-   .segmentSlot > *), centering the cloned Wordmark (and its "Working in
-   progress" line) within it while the clone is flying in/resting/flying
-   out. */
+/* Positions the Recognition loader (see FlyingLogoLoader, passed as its
+   className) -- FlyingLogoLoader itself has no layout opinion, so this is
+   what makes it share the same grid cell as SegmentPanel/modelSelectPanel/
+   routesPanel (via .segmentSlot > *) and center within it while the clone
+   is flying in/resting/flying out. */
 .recognitionLoaderSlot {
   height: 100%;
   min-height: 0;
@@ -417,24 +417,6 @@
   align-items: center;
   justify-content: center;
   gap: 0.6rem;
-}
-
-/* The FLIP target itself -- both loaderPhase legs (the useFlipSlide call
-   for "in" and the dedicated effect for "out") set transform/opacity on
-   this element's own inline style directly, so nothing here should declare
-   its own transition/transform that'd fight with those; this is purely
-   layout (so the clone can't be mistaken for interactive content, and so
-   the whole thing composites as one unit while moving). */
-.recognitionLoaderClone {
-  pointer-events: none;
-}
-
-/* Sits just under the clone -- same muted/quiet treatment as
-   .routesSummary's own status line, not a heading, since the clone itself
-   is already the visual focus here. */
-.recognitionLoaderText {
-  color: var(--muted);
-  font-size: 0.85rem;
 }
 
 .routesSummary {

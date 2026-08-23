@@ -27,9 +27,15 @@ export interface RouteDetectionApiClient {
    * Uploads `file`'s bytes as the working image via `PUT /image/working`.
    * The backend session then holds onto it -- later steps (segmentation,
    * augmentation, inference) reference it implicitly instead of re-sending
-   * the file each time.
+   * the file each time. By default this is a fresh image (the backend
+   * drops any previously detected segments along with it -- see
+   * src/backend/routes/working_image.py's _set_working_image). Pass
+   * `keepSegments: true` for a same-image reset instead -- used by
+   * WallImageWorkspace's handleBackToAugment to put the original,
+   * unaugmented bytes back after Finish Augment without losing the holds
+   * already detected on it.
    */
-  setWorkingImage(file: File | Blob): Promise<void>;
+  setWorkingImage(file: File | Blob, options?: { keepSegments?: boolean }): Promise<void>;
 
   /**
    * Submits every clicked point to `POST /image/working/segment`, then

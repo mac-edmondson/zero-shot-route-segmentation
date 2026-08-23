@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties } from "react";
+import type { CSSProperties, RefObject } from "react";
 import type { Coordinate, Segment } from "@/lib/api";
 import { Button } from "@/components/button/Button";
+import { FlyingLogoLoader } from "@/components/flying-logo-loader/FlyingLogoLoader";
 import styles from "./ImageCanvas.module.css";
 
 /** Zoom range for Ctrl+/Ctrl- (see the zoom/pan state below) -- 1 is the
@@ -168,6 +169,12 @@ interface ImageCanvasProps {
   pendingPoints?: Coordinate[];
   webcamActive?: boolean;
   loading?: boolean;
+  /** The real ROUTNet logo up in the header -- passed through to
+   * FlyingLogoLoader (see the `loading` overlay below) as the "from"/"to"
+   * rect its clone flies between. Required whenever `loading` can ever be
+   * true, which in this app's one real usage (WallImageWorkspace) is
+   * always. */
+  logoRef: RefObject<HTMLElement | null>;
   onCaptureFrame?: (blob: Blob) => void;
   onWebcamError?: (message: string) => void;
   /** Coordinates are normalized to [0, 1] of the displayed image. */
@@ -220,6 +227,7 @@ export function ImageCanvas({
   pendingPoints = [],
   webcamActive = false,
   loading = false,
+  logoRef,
   onCaptureFrame = () => {},
   onWebcamError = () => {},
   onAddSegmentPoint,
@@ -752,12 +760,7 @@ export function ImageCanvas({
                 style={{ left: `${point.x * 100}%`, top: `${point.y * 100}%` }}
               />
             ))}
-          {loading && (
-            <div className={styles.overlay}>
-              <span className={styles.spinner} aria-hidden />
-              Working…
-            </div>
-          )}
+          <FlyingLogoLoader active={loading} logoRef={logoRef} className={styles.loadingOverlay} />
         </div>
       ) : (
         <div className={styles.empty}>

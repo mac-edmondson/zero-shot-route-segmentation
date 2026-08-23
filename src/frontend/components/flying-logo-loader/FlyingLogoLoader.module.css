@@ -1,0 +1,16 @@
+/* The FLIP target itself -- both phase legs in FlyingLogoLoader.tsx set
+   transform/opacity on this element's own inline style directly, so
+   nothing here should declare its own transition/transform that'd fight
+   with those; this is purely layout (so the clone can't be mistaken for
+   interactive content, and so the whole thing composites as one unit while
+   moving). */
+.clone {
+  pointer-events: none;
+}
+
+/* Sits just under the clone -- a quiet status line, not a heading, since
+   the clone itself is already the visual focus here. */
+.text {
+  color: var(--muted);
+  font-size: 0.85rem;
+}

@@ -11,3 +11,6 @@ pillow>=10.0
 opencv-python-headless>=5.0.0.93
 
 transformers==5.15.0
+
+# Needed for the YOLOv8 hold detector. (This is only for the base build for docker, for production builds it is already present in .toml file.)
+ultralytics==8.4.126

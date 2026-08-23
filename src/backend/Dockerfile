@@ -27,7 +27,9 @@ resnet50(weights=ResNet50_Weights.IMAGENET1K_V2)
 PY
 
 # Install the rest of the packages
-RUN /venv/bin/pip install --no-cache-dir -r requirements.txt
+RUN /venv/bin/pip install --no-cache-dir -r requirements.txt \
+    && /venv/bin/pip uninstall -y opencv-python opencv-python-headless \
+    && /venv/bin/pip install --no-cache-dir opencv-python-headless
 
 FROM python:3.12-slim AS base
 
