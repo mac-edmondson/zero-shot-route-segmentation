@@ -6,7 +6,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from numbers import Real
 from pathlib import Path
-from typing import Any, TypeAlias
+from typing import Any
 
 import cv2
 import numpy as np
@@ -30,7 +30,7 @@ class SAM3Base:
 
     def __init__(
         self,
-        model_dir: str | Path = "/home/vault/v123be/v123be56/LIT/models/sam3",
+        model_dir: str | Path = "models/sam3",
         device: str | torch.device | None = None,
     ) -> None:
         self.model_dir = Path(model_dir)
@@ -109,7 +109,7 @@ class SAM3Base:
         return np.equal(masks, 1)
 
 
-Exemplar: TypeAlias = tuple[Image.Image, np.ndarray]
+type Exemplar = tuple[Image.Image, np.ndarray]
 
 
 @dataclass(frozen=True)
@@ -125,7 +125,14 @@ class SAM3HoldWrapper(SAM3Base):
 
     def load_model(self) -> None:
         """Load the configured local SAM3 video model and processor."""
-        self._require_model_files(("config.json", "model.safetensors"))
+        self._require_model_files(("config.json",))
+        if not any(
+            (self.model_dir / name).is_file()
+            for name in ("model.safetensors", "model.safetensors.index.json")
+        ):
+            raise FileNotFoundError(
+                f"Model weights for 'SAM3' were not found in '{self.model_dir}'."
+            )
         self.processor = Sam3VideoProcessor.from_pretrained(
             self.model_dir, local_files_only=True
         )
@@ -273,7 +280,7 @@ class SAMWrapper(SAM3Base):
     def __init__(
         self,
         model_id: str = "facebook/sam3",
-        model_dir: str | Path = "/home/vault/v123be/v123be56/LIT/models/sam3",
+        model_dir: str | Path = "models/sam3",
         device: str | torch.device | None = None,
     ) -> None:
         self.model_id = model_id
