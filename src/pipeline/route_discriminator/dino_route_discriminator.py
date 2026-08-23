@@ -31,7 +31,6 @@ class DINORouteDiscriminator(DINOv3):
     def __init__(
         self,
         pooling: Pooling = "weighted",
-        random_state: int | None = 0,
         model_dir: str | Path = "models/dinov3",
         device: str | torch.device | None = None,
         min_cluster_size: int = 2,
@@ -41,10 +40,6 @@ class DINORouteDiscriminator(DINOv3):
         if pooling not in {"weighted", "mean"}:
             raise InvalidRouteDiscriminatorConfigError(
                 "pooling must be either 'weighted' or 'mean'."
-            )
-        if random_state is not None and type(random_state) is not int:
-            raise InvalidRouteDiscriminatorConfigError(
-                "random_state must be an integer or None."
             )
         if (
             isinstance(color_weight, bool)
@@ -67,7 +62,6 @@ class DINORouteDiscriminator(DINOv3):
             )
         super().__init__(model_dir=model_dir, device=device)
         self.pooling = pooling
-        self.random_state = random_state
         self.min_cluster_size = min_cluster_size
         self.min_samples = min_samples
         self.color_weight = float(color_weight)
@@ -76,7 +70,6 @@ class DINORouteDiscriminator(DINOv3):
     def configuration(self) -> dict[str, object]:
         return {
             "pooling": self.pooling,
-            "random_state": self.random_state,
             "min_cluster_size": self.min_cluster_size,
             "min_samples": self.min_samples,
             "color_weight": self.color_weight,
