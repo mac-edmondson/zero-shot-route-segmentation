@@ -6,6 +6,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Literal
 
+import cv2
 import numpy as np
 import torch
 from PIL import Image as PILImage
@@ -17,17 +18,15 @@ from ..utility.dinov3 import DINOv3
 from .route_discriminator import (
     InvalidRouteDiscriminatorConfigError,
     RouteDiscriminator,
-    _kmeans,
 )
 
 Pooling = Literal["weighted", "mean"]
 
 
 class DINORouteDiscriminator(DINOv3):
-    """Group holds by their contextual DINOv3 patch embeddings."""
+    """Group holds by DINO cosine and optional CIELAB colour distance."""
 
     implementation_id = "dino_route_discriminator"
-    N_CLUSTERS = 5
 
     def __init__(
         self,
@@ -35,7 +34,9 @@ class DINORouteDiscriminator(DINOv3):
         random_state: int | None = 0,
         model_dir: str | Path = "models/dinov3",
         device: str | torch.device | None = None,
-        color_weight: float = 1.0,
+        min_cluster_size: int = 2,
+        min_samples: int | None = None,
+        color_weight: float = 0.0,
     ) -> None:
         if pooling not in {"weighted", "mean"}:
             raise InvalidRouteDiscriminatorConfigError(
@@ -54,61 +55,39 @@ class DINORouteDiscriminator(DINOv3):
             raise InvalidRouteDiscriminatorConfigError(
                 "color_weight must be a finite non-negative number."
             )
+        if type(min_cluster_size) is not int or min_cluster_size <= 0:
+            raise InvalidRouteDiscriminatorConfigError(
+                "min_cluster_size must be a positive integer."
+            )
+        if min_samples is not None and (
+            type(min_samples) is not int or min_samples <= 0
+        ):
+            raise InvalidRouteDiscriminatorConfigError(
+                "min_samples must be a positive integer or None."
+            )
         super().__init__(model_dir=model_dir, device=device)
         self.pooling = pooling
         self.random_state = random_state
+        self.min_cluster_size = min_cluster_size
+        self.min_samples = min_samples
         self.color_weight = float(color_weight)
 
     @property
     def configuration(self) -> dict[str, object]:
         return {
-            "n_clusters": self.N_CLUSTERS,
             "pooling": self.pooling,
             "random_state": self.random_state,
+            "min_cluster_size": self.min_cluster_size,
+            "min_samples": self.min_samples,
             "color_weight": self.color_weight,
             "model_dir": str(self.model_dir),
             "device": str(self.device),
         }
 
-    @staticmethod
-    def _elbow_cluster_count(
-        features: np.ndarray, max_clusters: int, random_state: int | None
-    ) -> int:
-        """Choose k from the largest distance to the inertia end-point line."""
-        upper = min(max_clusters, len(features))
-        if upper <= 1:
-            return 1
-        if upper == 2:
-            return 2 if not np.allclose(features[0], features[1]) else 1
-
-        inertias = []
-        for n_clusters in range(1, upper + 1):
-            labels = _kmeans(features, n_clusters, random_state)
-            centers = np.array(
-                [
-                    features[labels == index].mean(axis=0)
-                    if np.any(labels == index)
-                    else np.zeros(features.shape[1])
-                    for index in range(n_clusters)
-                ]
-            )
-            inertias.append(float(((features - centers[labels]) ** 2).sum()))
-
-        x = np.arange(upper, dtype=np.float64)
-        y = np.asarray(inertias, dtype=np.float64)
-        denominator = np.hypot(x[-1] - x[0], y[-1] - y[0])
-        if denominator == 0:
-            return 1
-        distances = (
-            np.abs((x - x[0]) * (y[-1] - y[0]) - (y - y[0]) * (x[-1] - x[0]))
-            / denominator
-        )
-        return int(np.argmax(distances)) + 1
-
     def get_routes(
         self, images: Sequence[Image], holds: Sequence[Sequence[Hold]]
     ) -> list[list[Route]]:
-        """Return one DINO-clustered route list for every image."""
+        """Return one HDBSCAN-clustered route list for every image."""
         self._validate_inputs(images, holds)
         result = []
         for image, image_holds in zip(images, holds, strict=True):
@@ -119,23 +98,36 @@ class DINORouteDiscriminator(DINOv3):
             features = torch.stack(
                 [self._pool_hold(tokens, image, hold) for hold in image_holds]
             )
-            features = np.stack(
-                [
-                    self._combine_features(feature, self._rgb_feature(image, hold))
-                    for feature, hold in zip(features, image_holds, strict=True)
-                ]
-            )
-            n_clusters = self._elbow_cluster_count(
-                features, self.N_CLUSTERS, self.random_state
-            )
-            labels = _kmeans(features, n_clusters, self.random_state)
+            if len(image_holds) == 1:
+                labels = np.array([0])
+                distances = None
+            else:
+                distances = self._dino_distances(features.detach().cpu().numpy())
+            if self.color_weight > 0 and distances is not None:
+                colours = np.stack(
+                    [self._lab_feature(image, hold) for hold in image_holds]
+                )
+                distances = (
+                    distances + self.color_weight * self._ciede2000_distances(colours)
+                ) / (1 + self.color_weight)
+            if distances is not None:
+                labels = self._hdbscan_labels(distances)
+
             groups: dict[int, set[Hold]] = {}
+            noise: list[Hold] = []
             for hold, label in zip(image_holds, labels, strict=True):
-                groups.setdefault(int(label), set()).add(hold)
+                if label == -1:
+                    noise.append(hold)
+                else:
+                    groups.setdefault(int(label), set()).add(hold)
+            ordered_groups: list[set[Hold]] = []
+            for label in sorted(groups):
+                ordered_groups.append(groups[label])
+            ordered_groups.extend({hold} for hold in noise)
             result.append(
                 [
                     Route(group, route_id)
-                    for route_id, group in enumerate(groups.values())
+                    for route_id, group in enumerate(ordered_groups)
                 ]
             )
         return result
@@ -175,28 +167,25 @@ class DINORouteDiscriminator(DINOv3):
         coverage = torch.from_numpy(np.asarray(resized, dtype=np.float32) / 255.0).to(
             device=tokens.device, dtype=tokens.dtype
         )
-        coverage = coverage.reshape(40, 16, 40, 16).mean(dim=(1, 3)).flatten()
+        grid_size = self.IMAGE_SIZE // self.PATCH_SIZE
+        coverage = (
+            coverage.reshape(grid_size, self.PATCH_SIZE, grid_size, self.PATCH_SIZE)
+            .mean(dim=(1, 3))
+            .flatten()
+        )
         weights = coverage if self.pooling == "weighted" else coverage.gt(0)
         weights = weights.to(dtype=tokens.dtype)
-
         if not torch.any(weights):
-            x = max(0, min(39, hold.centroid.x * 40 // image.width))
-            y = max(0, min(39, hold.centroid.y * 40 // image.height))
-            weights[y * 40 + x] = 1
+            x = max(0, min(grid_size - 1, hold.centroid.x * grid_size // image.width))
+            y = max(0, min(grid_size - 1, hold.centroid.y * grid_size // image.height))
+            weights[y * grid_size + x] = 1
         embedding = (tokens * weights[:, None]).sum(0) / weights.sum()
         return torch.nn.functional.normalize(embedding, dim=0)
 
-    def _combine_features(
-        self, dino_feature: torch.Tensor, rgb_feature: np.ndarray
-    ) -> np.ndarray:
-        """Fuse independently normalized DINO and mean-RGB hold features."""
-        dino = dino_feature.detach().cpu().numpy()
-        return np.concatenate((dino, self.color_weight * rgb_feature))
-
     @staticmethod
-    def _rgb_feature(image: Image, hold: Hold) -> np.ndarray:
-        """Return the L2-normalized mean RGB value inside a hold polygon."""
-        pixels = np.asarray(image.convert("RGB"), dtype=np.float32)
+    def _lab_feature(image: Image, hold: Hold) -> np.ndarray:
+        """Return the median CIELAB colour inside a hold polygon."""
+        pixels = cv2.cvtColor(np.asarray(image.convert("RGB")), cv2.COLOR_RGB2LAB)
         mask = PILImage.new("L", image.size, 0)
         ImageDraw.Draw(mask).polygon(
             [(point.x, point.y) for point in hold.polygon.points], fill=1
@@ -204,12 +193,81 @@ class DINORouteDiscriminator(DINOv3):
         values = pixels[np.asarray(mask, dtype=bool)]
         if not len(values):
             return np.zeros(3, dtype=np.float32)
-        mean = values.mean(axis=0)
-        norm = np.linalg.norm(mean)
-        return mean / norm if norm else mean
+        values = values.astype(np.float32)
+        values[:, 0] *= 100 / 255
+        values[:, 1:] = (values[:, 1:] - 128) * 100 / 255
+        return np.median(values, axis=0).astype(np.float32)
+
+    @staticmethod
+    def _dino_distances(features: np.ndarray) -> np.ndarray:
+        normalized = features / np.maximum(
+            np.linalg.norm(features, axis=1, keepdims=True), np.finfo(np.float32).eps
+        )
+        return np.clip(1 - normalized @ normalized.T, 0, 2).astype(np.float64)
+
+    @staticmethod
+    def _ciede2000_distances(lab: np.ndarray) -> np.ndarray:
+        first, second = lab[:, None, :].astype(float), lab[None, :, :].astype(float)
+        l1, a1, b1 = np.moveaxis(first, -1, 0)
+        l2, a2, b2 = np.moveaxis(second, -1, 0)
+        c1, c2 = np.hypot(a1, b1), np.hypot(a2, b2)
+        c_bar = (c1 + c2) / 2
+        twenty_five_seven = 25**7
+        g = 0.5 * (1 - np.sqrt(c_bar**7 / (c_bar**7 + twenty_five_seven)))
+        ap1, ap2 = (1 + g) * a1, (1 + g) * a2
+        cp1, cp2 = np.hypot(ap1, b1), np.hypot(ap2, b2)
+        hp1 = np.degrees(np.arctan2(b1, ap1)) % 360
+        hp2 = np.degrees(np.arctan2(b2, ap2)) % 360
+        delta_l, delta_c = l2 - l1, cp2 - cp1
+        delta_h = hp2 - hp1
+        delta_h = np.where(delta_h > 180, delta_h - 360, delta_h)
+        delta_h = np.where(delta_h < -180, delta_h + 360, delta_h)
+        delta_h = np.where(cp1 * cp2 == 0, 0, delta_h)
+        delta_h_term = 2 * np.sqrt(cp1 * cp2) * np.sin(np.radians(delta_h) / 2)
+        l_bar, cp_bar = (l1 + l2) / 2, (cp1 + cp2) / 2
+        h_bar = np.where(
+            cp1 * cp2 == 0,
+            hp1 + hp2,
+            np.where(
+                np.abs(hp1 - hp2) <= 180,
+                (hp1 + hp2) / 2,
+                np.where(hp1 + hp2 < 360, (hp1 + hp2 + 360) / 2, (hp1 + hp2 - 360) / 2),
+            ),
+        )
+        t = 1 - 0.17 * np.cos(np.radians(h_bar - 30))
+        t += 0.24 * np.cos(np.radians(2 * h_bar))
+        t += 0.32 * np.cos(np.radians(3 * h_bar + 6))
+        t -= 0.20 * np.cos(np.radians(4 * h_bar - 63))
+        sl = 1 + 0.015 * (l_bar - 50) ** 2 / np.sqrt(20 + (l_bar - 50) ** 2)
+        sc, sh = 1 + 0.045 * cp_bar, 1 + 0.015 * cp_bar * t
+        rt = (
+            -2
+            * np.sqrt(cp_bar**7 / (cp_bar**7 + twenty_five_seven))
+            * np.sin(np.radians(60) * np.exp(-(((h_bar - 275) / 25) ** 2)))
+        )
+        distance = np.sqrt(
+            (delta_l / sl) ** 2
+            + (delta_c / sc) ** 2
+            + (delta_h_term / sh) ** 2
+            + rt * (delta_c / sc) * (delta_h_term / sh)
+        )
+        return np.clip(distance / 100, 0, 1)
 
     @staticmethod
     def mark_routes(
         images: Sequence[Image], routes: Sequence[Sequence[Route]]
     ) -> list[Image]:
         return RouteDiscriminator.mark_routes(images, routes)
+
+    def _hdbscan_labels(self, distances: np.ndarray) -> np.ndarray:
+        try:
+            import hdbscan
+        except ModuleNotFoundError as exc:
+            raise InvalidRouteDiscriminatorConfigError(
+                "HDBSCAN clustering requires the 'hdbscan' package."
+            ) from exc
+        return hdbscan.HDBSCAN(
+            min_cluster_size=self.min_cluster_size,
+            min_samples=self.min_samples,
+            metric="precomputed",
+        ).fit_predict(distances)

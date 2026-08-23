@@ -15,8 +15,8 @@ class FakeDINOv3(torch.nn.Module):
             patch_size=16, hidden_size=384, num_register_tokens=4
         )
         self.hidden_state = torch.arange(
-            1 * (1 + 4 + 1600) * 384, dtype=torch.float32
-        ).reshape(1, 1605, 384)
+            1 * (1 + 4 + 6400) * 384, dtype=torch.float32
+        ).reshape(1, 6405, 384)
 
     def forward(self, **_: object) -> SimpleNamespace:
         return SimpleNamespace(last_hidden_state=self.hidden_state)
@@ -28,7 +28,7 @@ class FakeProcessor:
 
     def __call__(self, **kwargs: object) -> dict[str, torch.Tensor]:
         self.call = kwargs
-        return {"pixel_values": torch.zeros(1, 3, 640, 640)}
+        return {"pixel_values": torch.zeros(1, 3, 1280, 1280)}
 
 
 def _model_files(path) -> None:
@@ -59,7 +59,7 @@ def test_extract_patch_tokens_loads_once_and_removes_special_tokens(
     tokens = wrapper.extract_patch_tokens(Image.new("L", (80, 40)))
     wrapper.extract_patch_tokens(Image.new("RGB", (20, 20)))
 
-    assert tokens.shape == (1600, 384)
+    assert tokens.shape == (6400, 384)
     assert torch.equal(tokens, model.hidden_state[0, 5:])
     assert tokens.device.type == "cpu" and tokens.dtype == torch.float32
     assert model_loads == [(model_dir, {"local_files_only": True})]
@@ -67,7 +67,7 @@ def test_extract_patch_tokens_loads_once_and_removes_special_tokens(
     assert not model.training and not model.weight.requires_grad
     assert model.weight.dtype == torch.float32
     assert processor.call["images"].mode == "RGB"
-    assert processor.call["size"] == {"height": 640, "width": 640}
+    assert processor.call["size"] == {"height": 1280, "width": 1280}
     assert processor.call["do_center_crop"] is False
 
 

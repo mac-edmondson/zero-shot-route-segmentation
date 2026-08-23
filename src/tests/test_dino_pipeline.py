@@ -1,6 +1,5 @@
 from pathlib import Path
 
-import pytest
 from PIL import Image
 
 from pipeline.hold_detector.mask_rcnn_hold_detector import MaskRCNNHoldDetector
@@ -10,7 +9,7 @@ from pipeline.route_discriminator.dino_route_discriminator import (
 from pipeline.route_discriminator_pipeline import RouteDiscriminatorPipeline
 
 ROOT = Path(__file__).resolve().parents[2]
-INPUT_PATH = ROOT / "data" / "evaluation" / "images" / "image_3.jpeg"
+INPUT_PATH = ROOT / "data" / "evaluation" / "images" / "image.png"
 OUTPUT_DIR = ROOT / "data" / "test-dino-pipeline"
 
 

@@ -14,7 +14,7 @@ class DINOv3:
     """Load a frozen local DINOv3 ViT-S/16 and extract patch tokens."""
 
     MODEL_ID = "facebook/dinov3-vits16-pretrain-lvd1689m"
-    IMAGE_SIZE = 640
+    IMAGE_SIZE = 1280
     PATCH_SIZE = 16
     HIDDEN_SIZE = 384
     NUM_REGISTER_TOKENS = 4
@@ -41,7 +41,10 @@ class DINOv3:
         if resolved.type == "cuda":
             if not torch.cuda.is_available():
                 raise RuntimeError("CUDA was requested, but it is not available.")
-            if resolved.index is not None and resolved.index >= torch.cuda.device_count():
+            if (
+                resolved.index is not None
+                and resolved.index >= torch.cuda.device_count()
+            ):
                 raise RuntimeError(
                     f"CUDA device index {resolved.index} is not available."
                 )
@@ -93,7 +96,7 @@ class DINOv3:
             self.load_model()
 
     def extract_patch_tokens(self, image: PILImage.Image) -> torch.Tensor:
-        """Return the image's 1,600 local patch embeddings on the model device."""
+        """Return the image's 6,400 local patch embeddings on the model device."""
         if not isinstance(image, PILImage.Image):
             raise TypeError("image must be a PIL.Image.Image.")
         self._ensure_model_loaded()
