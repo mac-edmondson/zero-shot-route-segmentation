@@ -44,7 +44,7 @@ class SAMHoldDetector(HoldDetector, SAM3HoldWrapper):
                 "exemplars must be a sequence of (image, mask) pairs."
             )
 
-        super().__init__(**config)
+        SAM3HoldWrapper.__init__(self, **config)
         self.text_prompt = text_prompt
         self.exemplars = tuple(
             self._validate_exemplar(exemplar) for exemplar in exemplars
@@ -62,7 +62,7 @@ class SAMHoldDetector(HoldDetector, SAM3HoldWrapper):
             "nms_iou": self.nms_iou,
         }
 
-    def get_holds(self, images: Sequence[Image.Image]) -> list[list[Hold]]:
+    def get_holds(self, images: Sequence[Image]) -> list[list[Hold]]:
         """Return deduplicated holds for each image using configured exemplars."""
         self._validate_images(images)
         self._ensure_model_loaded()
@@ -74,7 +74,7 @@ class SAMHoldDetector(HoldDetector, SAM3HoldWrapper):
         ]
 
     def _prediction_batches(
-        self, images: Sequence[Image.Image]
+        self, images: Sequence[Image]
     ) -> list[list[MaskPrediction]]:
         if not self.exemplars:
             return [
@@ -91,11 +91,11 @@ class SAMHoldDetector(HoldDetector, SAM3HoldWrapper):
         return [self._deduplicate_predictions(batch) for batch in merged]
 
     @staticmethod
-    def _validate_images(images: Sequence[Image.Image]) -> None:
+    def _validate_images(images: Sequence[Image]) -> None:
         if (
             isinstance(images, (str, bytes))
             or not isinstance(images, Sequence)
-            or any(not isinstance(image, Image.Image) for image in images)
+            or any(not isinstance(image, Image) for image in images)
         ):
             raise InvalidImageError("images must be a sequence of PIL images.")
 
