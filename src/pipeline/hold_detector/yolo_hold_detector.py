@@ -17,10 +17,9 @@ class YOLOv8HoldDetector:
     implementation_id = "yolov8_hold_detector"
     _WEIGHTS_PATH = (
         Path(__file__).resolve().parents[3]
-        / "training"
-        / "yolov8-hold-detector"
-        / "checkpoints"
-        / "best.pt"
+        / "models"
+        / "yolov8_hold_detector"
+        / "best.pt" 
     )
     _CLASS_NAMES = {0: "hold"}
 

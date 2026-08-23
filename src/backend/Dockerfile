@@ -15,7 +15,9 @@ RUN /venv/bin/pip install --no-cache-dir --upgrade \
     pip \
     setuptools \
     wheel
-RUN /venv/bin/pip install --no-cache-dir -r requirements.txt
+RUN /venv/bin/pip install --no-cache-dir -r requirements.txt \
+    && /venv/bin/pip uninstall -y opencv-python opencv-python-headless \
+    && /venv/bin/pip install --no-cache-dir opencv-python-headless
 RUN /venv/bin/pip install --no-cache-dir --no-build-isolation -r detectron.requirements.txt
 
 
