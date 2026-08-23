@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Split one safetensors checkpoint into Transformers-compatible shards.
+"""This script is used to shard a SAM3 model so it fits in Git LFS sized chunks (<2 GiB) :/.
+
+Split one safetensors checkpoint into Transformers-compatible shards.
 
 The source checkpoint is removed after successful sharding.
 Usage: uv run python models/sam3/shard_original_image.py PATH
