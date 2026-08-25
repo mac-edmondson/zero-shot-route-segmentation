@@ -16,8 +16,8 @@ from pathlib import Path
 from PIL import Image as PILImage
 
 from ..interfaces.data_models import Hold, Image
-from .ground_truth_loader import load_coco_restructured, load_via_csv, pixel_hash
-from ..hold_detector.hold_detector import HoldDetector
+from ..utility.ground_truth_loader import load_coco_restructured, load_via_csv, pixel_hash
+from .hold_detector import HoldDetector
 
 _DEFAULT_ANNOTATIONS_PATH = (
     Path(__file__).resolve().parents[3]

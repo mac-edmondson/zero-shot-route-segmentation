@@ -41,7 +41,7 @@ def _create_mock_route_discriminator(
 def _create_ground_truth_route_discriminator(
     config: Mapping[str, Any] = dict(),
 ) -> RouteDiscriminator:
-    from ..ground_truth.ground_truth_route_discriminator import (
+    from .ground_truth_route_discriminator import (
         GroundTruthRouteDiscriminator,
     )
 

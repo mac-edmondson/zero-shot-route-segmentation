@@ -47,7 +47,7 @@ def _create_yolo_hold_detector(config: Mapping[str, Any] = dict()) -> HoldDetect
 
 
 def _create_ground_truth_hold_detector(config: Mapping[str, Any] = dict()) -> HoldDetector:
-    from ..ground_truth.ground_truth_hold_detector import GroundTruthHoldDetector
+    from .ground_truth_hold_detector import GroundTruthHoldDetector
 
     return GroundTruthHoldDetector(**config)
 

@@ -9,8 +9,8 @@ from pathlib import Path
 from PIL import Image as PILImage
 
 from ..interfaces.data_models import Hold, Image, Route
-from ..route_discriminator.route_discriminator import RouteDiscriminator
-from .ground_truth_loader import build_routes, load_coco_restructured, pixel_hash
+from .route_discriminator import RouteDiscriminator
+from ..utility.ground_truth_loader import build_routes, load_coco_restructured, pixel_hash
 
 _DEFAULT_ANNOTATIONS_PATH = (
     Path(__file__).resolve().parents[3]
