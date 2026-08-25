@@ -13,7 +13,7 @@ INPUT_PATH = ROOT / "data" / "evaluation" / "images" / "image.png"
 OUTPUT_DIR = ROOT / "data" / "test-dino-pipeline"
 
 
-# @pytest.mark.skip(reason="Do not run inference every test run")
+@pytest.mark.skip(reason="Do not run inference every test run")
 def test_real_mask_rcnn_dino_pipeline_marks_detected_routes() -> None:
     image = Image.open(INPUT_PATH).convert("RGB")
     pipeline = RouteDiscriminatorPipeline(
