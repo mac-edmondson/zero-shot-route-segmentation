@@ -38,8 +38,19 @@ def _create_mock_route_discriminator(
     return MockRouteDiscriminator(**config)
 
 
+def _create_ground_truth_route_discriminator(
+    config: Mapping[str, Any] = dict(),
+) -> RouteDiscriminator:
+    from ..ground_truth.ground_truth_route_discriminator import (
+        GroundTruthRouteDiscriminator,
+    )
+
+    return GroundTruthRouteDiscriminator(**config)
+
+
 _AVAILABLE_ROUTE_DISCRIMINATORS_MAP: Mapping[str, _Constructor] = {
     "Triplet MLP": _create_triplet_route_discriminator,
+    "Ground Truth": _create_ground_truth_route_discriminator,
     "Mock": _create_mock_route_discriminator,
 }
 AVAILABLE_ROUTE_DISCRIMINATORS = list(_AVAILABLE_ROUTE_DISCRIMINATORS_MAP.keys())
