@@ -54,6 +54,7 @@ class ColorOnlyRouteDiscriminator:
 
     @property
     def configuration(self):
+        """ " color_space must be configured 'rgb' or 'lab' to use either of them."""
         return {
             "n_clusters": self.n_clusters,
             "clustering_method": self.clustering_method,
