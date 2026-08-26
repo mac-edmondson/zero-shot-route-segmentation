@@ -1,3 +1,6 @@
+import sys
+from types import ModuleType
+
 import numpy as np
 import pytest
 import torch
@@ -5,7 +8,7 @@ from PIL import Image
 
 from pipeline.interfaces.data_models import Coordinate, Hold, Polygon
 from pipeline.interfaces.errors import BatchAlignmentError, InvalidImageError
-from pipeline.route_discriminator.dino_route_discriminator import DINORouteDiscriminator
+from pipeline.route_discriminator.dino_clustering_route_discriminator import DINOClusteringRouteDiscriminator
 from pipeline.route_discriminator.route_discriminator import (
     InvalidRouteDiscriminatorConfigError,
 )
@@ -37,7 +40,7 @@ def patch_tokens() -> torch.Tensor:
 def test_groups_holds_and_preserves_pooling_interface(monkeypatch):
     image = Image.new("RGB", (100, 100))
     left, right = hold(10, 10, 20, 20), hold(70, 70, 80, 80)
-    discriminator = DINORouteDiscriminator(device="cpu")
+    discriminator = DINOClusteringRouteDiscriminator(device="cpu")
     monkeypatch.setattr(discriminator, "extract_patch_tokens", lambda _: patch_tokens())
     monkeypatch.setattr(
         discriminator, "_hdbscan_labels", lambda distances: np.array([0, 1])
@@ -56,7 +59,7 @@ def test_groups_holds_and_preserves_pooling_interface(monkeypatch):
 
 def test_single_hold_is_a_route_without_hdbscan(monkeypatch):
     image = Image.new("RGB", (100, 100))
-    discriminator = DINORouteDiscriminator(device="cpu")
+    discriminator = DINOClusteringRouteDiscriminator(device="cpu")
     monkeypatch.setattr(discriminator, "extract_patch_tokens", lambda _: patch_tokens())
     monkeypatch.setattr(
         discriminator, "_hdbscan_labels", lambda _: pytest.fail("not called")
@@ -68,27 +71,28 @@ def test_single_hold_is_a_route_without_hdbscan(monkeypatch):
     assert routes[0][0].holds == {only}
 
 
-def test_pooling_modes_and_centroid_fallback_produce_normalized_features():
+def test_pooling_modes_and_centroid_fallback_produce_normalized_features(monkeypatch):
     image = Image.new("RGB", (80, 40))
     polygon = hold(1, 1, 5, 5)
-    tokens = patch_tokens()
-    weighted = DINORouteDiscriminator(pooling="weighted", device="cpu")
-    mean = DINORouteDiscriminator(pooling="mean", device="cpu")
+    weighted = DINOClusteringRouteDiscriminator(pooling="weighted", device="cpu")
+    mean = DINOClusteringRouteDiscriminator(pooling="mean", device="cpu")
+    monkeypatch.setattr(weighted, "extract_patch_tokens", lambda _: patch_tokens())
+    monkeypatch.setattr(mean, "extract_patch_tokens", lambda _: patch_tokens())
 
     assert torch.linalg.vector_norm(
-        weighted._pool_hold(tokens, image, polygon)
+        weighted.extract_mask_embeddings(image, [weighted._hold_mask(image, polygon)])[0]
     ) == pytest.approx(1.0)
     assert torch.linalg.vector_norm(
-        mean._pool_hold(tokens, image, polygon)
+        mean.extract_mask_embeddings(image, [mean._hold_mask(image, polygon)])[0]
     ) == pytest.approx(1.0)
     assert torch.linalg.vector_norm(
-        weighted._pool_hold(tokens, image, hold(100, 100, 110, 110))
+        weighted.extract_mask_embeddings(image, [weighted._hold_mask(image, hold(100, 100, 110, 110))])[0]
     ) == pytest.approx(1.0)
 
 
 def test_dino_distances_are_cosine_distances():
     features = np.array([[1, 0], [0, 1], [1, 1]], dtype=float)
-    distances = DINORouteDiscriminator._dino_distances(features)
+    distances = DINOClusteringRouteDiscriminator._dino_distances(features)
     assert np.allclose(np.diag(distances), 0)
     assert distances[0, 1] == pytest.approx(1)
     assert distances[0, 2] == pytest.approx(1 - 1 / np.sqrt(2))
@@ -99,8 +103,8 @@ def test_colour_feature_is_median_lab_inside_polygon():
     for x in range(5, 10):
         for y in range(5, 10):
             image.putpixel((x, y), (255, 0, 0))
-    feature = DINORouteDiscriminator._lab_feature(image, hold(5, 5, 9, 9))
-    expected = DINORouteDiscriminator._lab_feature(
+    feature = DINOClusteringRouteDiscriminator._lab_feature(image, hold(5, 5, 9, 9))
+    expected = DINOClusteringRouteDiscriminator._lab_feature(
         Image.new("RGB", (2, 2), (255, 0, 0)), hold(0, 0, 1, 1)
     )
     assert np.allclose(feature, expected)
@@ -108,7 +112,7 @@ def test_colour_feature_is_median_lab_inside_polygon():
 
 def test_ciede2000_is_normalized_and_zero_for_identical_colours():
     colours = np.array([[50, 0, 0], [50, 0, 0], [50, 80, 70]], dtype=float)
-    distances = DINORouteDiscriminator._ciede2000_distances(colours)
+    distances = DINOClusteringRouteDiscriminator._ciede2000_distances(colours)
     assert distances[0, 0] == pytest.approx(0)
     assert distances[0, 1] == pytest.approx(0)
     assert np.all((distances >= 0) & (distances <= 1))
@@ -118,7 +122,7 @@ def test_ciede2000_is_normalized_and_zero_for_identical_colours():
 def test_colour_weight_combines_pairwise_distances(monkeypatch):
     image = Image.new("RGB", (20, 20))
     holds = [hold(1, 1, 3, 3), hold(5, 5, 7, 7)]
-    discriminator = DINORouteDiscriminator(color_weight=3, device="cpu")
+    discriminator = DINOClusteringRouteDiscriminator(color_weight=3, device="cpu")
     monkeypatch.setattr(discriminator, "extract_patch_tokens", lambda _: patch_tokens())
     monkeypatch.setattr(
         discriminator, "_dino_distances", lambda _: np.array([[0, 0.2], [0.2, 0]])
@@ -139,7 +143,7 @@ def test_colour_weight_combines_pairwise_distances(monkeypatch):
 
 
 def test_hdbscan_uses_precomputed_distances(monkeypatch):
-    discriminator = DINORouteDiscriminator(min_cluster_size=2, device="cpu")
+    discriminator = DINOClusteringRouteDiscriminator(min_cluster_size=2, device="cpu")
     calls = {}
 
     class FakeHDBSCAN:
@@ -161,7 +165,7 @@ def test_hdbscan_uses_precomputed_distances(monkeypatch):
 
 def test_hdbscan_noise_holds_are_separate_routes(monkeypatch):
     image = Image.new("RGB", (100, 100))
-    discriminator = DINORouteDiscriminator(device="cpu")
+    discriminator = DINOClusteringRouteDiscriminator(device="cpu")
     monkeypatch.setattr(discriminator, "extract_patch_tokens", lambda _: patch_tokens())
     monkeypatch.setattr(
         discriminator, "_hdbscan_labels", lambda _: np.array([-1, -1, 0])
@@ -176,16 +180,56 @@ def test_hdbscan_noise_holds_are_separate_routes(monkeypatch):
     assert routes[2].holds == {holds[1]}
 
 
+def test_sklearn_clusterers_receive_precomputed_distances(monkeypatch):
+    calls = []
+
+    class FakeClusterer:
+        def __init__(self, **kwargs):
+            calls.append(kwargs)
+
+        def fit_predict(self, distances):
+            calls.append(distances)
+            return np.array([0, 1])
+
+    sklearn = ModuleType("sklearn")
+    cluster = ModuleType("sklearn.cluster")
+    cluster.DBSCAN = FakeClusterer
+    cluster.AgglomerativeClustering = FakeClusterer
+    sklearn.cluster = cluster
+    monkeypatch.setitem(sys.modules, "sklearn", sklearn)
+    monkeypatch.setitem(sys.modules, "sklearn.cluster", cluster)
+    distances = np.array([[0.0, 0.4], [0.4, 0.0]])
+
+    dbscan = DINOClusteringRouteDiscriminator(
+        clustering_method="dbscan", min_samples=2, eps=0.2, device="cpu"
+    )
+    assert np.array_equal(dbscan._cluster_labels(distances), [0, 1])
+    assert calls[0] == {"eps": 0.2, "min_samples": 2, "metric": "precomputed"}
+    assert np.array_equal(calls[1], distances)
+
+    calls.clear()
+    agglomerative = DINOClusteringRouteDiscriminator(
+        clustering_method="agglomerative", distance_threshold=0.2, device="cpu"
+    )
+    assert np.array_equal(agglomerative._cluster_labels(distances), [0, 1])
+    assert calls[0] == {
+        "n_clusters": None,
+        "distance_threshold": 0.2,
+        "metric": "precomputed",
+        "linkage": "average",
+    }
+
+
 def test_validation_and_factory():
-    assert isinstance(route_discriminator_factory("DINO"), DINORouteDiscriminator)
+    assert isinstance(route_discriminator_factory("DINO"), DINOClusteringRouteDiscriminator)
     for kwargs in (
         {"min_cluster_size": 0},
         {"min_samples": 0},
         {"color_weight": float("nan")},
     ):
         with pytest.raises(InvalidRouteDiscriminatorConfigError):
-            DINORouteDiscriminator(**kwargs)
-    discriminator = DINORouteDiscriminator(device="cpu")
+            DINOClusteringRouteDiscriminator(**kwargs)
+    discriminator = DINOClusteringRouteDiscriminator(device="cpu")
     with pytest.raises(InvalidImageError):
         discriminator.get_routes(["image"], [[]])
     with pytest.raises(BatchAlignmentError):

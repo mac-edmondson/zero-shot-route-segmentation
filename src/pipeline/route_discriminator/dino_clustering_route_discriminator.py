@@ -1,4 +1,4 @@
-"""DINOv3-only climbing-route discriminator."""
+"""DINOv3 climbing-route discriminator with configurable clustering."""
 
 from __future__ import annotations
 
@@ -21,12 +21,13 @@ from .route_discriminator import (
 )
 
 Pooling = Literal["weighted", "mean"]
+ClusteringMethod = Literal["hdbscan", "dbscan", "agglomerative"]
+AgglomerativeLinkage = Literal["average", "complete", "single"]
 
+class DINOClusteringRouteDiscriminator(DINOv3):
+    """Group holds by DINO/color distance using a configurable clusterer."""
 
-class DINORouteDiscriminator(DINOv3):
-    """Group holds by DINO cosine and optional CIELAB colour distance."""
-
-    implementation_id = "dino_route_discriminator"
+    implementation_id = "dino_clustering_route_discriminator"
 
     def __init__(
         self,
@@ -35,6 +36,10 @@ class DINORouteDiscriminator(DINOv3):
         device: str | torch.device | None = None,
         min_cluster_size: int = 2,
         min_samples: int | None = None,
+        clustering_method: ClusteringMethod = "hdbscan",
+        eps: float = 0.3,
+        distance_threshold: float = 0.3,
+        linkage: AgglomerativeLinkage = "average",
         color_weight: float = 0.0,
     ) -> None:
         if pooling not in {"weighted", "mean"}:
@@ -50,6 +55,24 @@ class DINORouteDiscriminator(DINOv3):
             raise InvalidRouteDiscriminatorConfigError(
                 "color_weight must be a finite non-negative number."
             )
+        if clustering_method not in {"hdbscan", "dbscan", "agglomerative"}:
+            raise InvalidRouteDiscriminatorConfigError(
+                "clustering_method must be 'hdbscan', 'dbscan', or 'agglomerative'."
+            )
+        for name, value in (("eps", eps), ("distance_threshold", distance_threshold)):
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not np.isfinite(value)
+                or value <= 0
+            ):
+                raise InvalidRouteDiscriminatorConfigError(
+                    f"{name} must be a finite positive number."
+                )
+        if linkage not in {"average", "complete", "single"}:
+            raise InvalidRouteDiscriminatorConfigError(
+                "linkage must be 'average', 'complete', or 'single'."
+            )
         if type(min_cluster_size) is not int or min_cluster_size <= 0:
             raise InvalidRouteDiscriminatorConfigError(
                 "min_cluster_size must be a positive integer."
@@ -64,6 +87,10 @@ class DINORouteDiscriminator(DINOv3):
         self.pooling = pooling
         self.min_cluster_size = min_cluster_size
         self.min_samples = min_samples
+        self.clustering_method = clustering_method
+        self.eps = float(eps)
+        self.distance_threshold = float(distance_threshold)
+        self.linkage = linkage
         self.color_weight = float(color_weight)
 
     @property
@@ -72,6 +99,10 @@ class DINORouteDiscriminator(DINOv3):
             "pooling": self.pooling,
             "min_cluster_size": self.min_cluster_size,
             "min_samples": self.min_samples,
+            "clustering_method": self.clustering_method,
+            "eps": self.eps,
+            "distance_threshold": self.distance_threshold,
+            "linkage": self.linkage,
             "color_weight": self.color_weight,
             "model_dir": str(self.model_dir),
             "device": str(self.device),
@@ -80,17 +111,15 @@ class DINORouteDiscriminator(DINOv3):
     def get_routes(
         self, images: Sequence[Image], holds: Sequence[Sequence[Hold]]
     ) -> list[list[Route]]:
-        """Return one HDBSCAN-clustered route list for every image."""
+        """Return one clustered route list for every image."""
         self._validate_inputs(images, holds)
         result = []
         for image, image_holds in zip(images, holds, strict=True):
             if not image_holds:
                 result.append([])
                 continue
-            tokens = self.extract_patch_tokens(image)
-            features = torch.stack(
-                [self._pool_hold(tokens, image, hold) for hold in image_holds]
-            )
+            masks = [self._hold_mask(image, hold) for hold in image_holds]
+            features = self.extract_mask_embeddings(image, masks, self.pooling)
             if len(image_holds) == 1:
                 labels = np.array([0])
                 distances = None
@@ -104,7 +133,7 @@ class DINORouteDiscriminator(DINOv3):
                     distances + self.color_weight * self._ciede2000_distances(colours)
                 ) / (1 + self.color_weight)
             if distances is not None:
-                labels = self._hdbscan_labels(distances)
+                labels = self._cluster_labels(distances)
 
             groups: dict[int, set[Hold]] = {}
             noise: list[Hold] = []
@@ -147,33 +176,17 @@ class DINORouteDiscriminator(DINOv3):
         ):
             raise TypeError("holds must be a sequence of Hold sequences.")
 
-    def _pool_hold(
-        self, tokens: torch.Tensor, image: Image, hold: Hold
-    ) -> torch.Tensor:
+    @staticmethod
+    def _hold_mask(image: Image, hold: Hold) -> PILImage.Image:
         mask = PILImage.new("L", image.size, 0)
         ImageDraw.Draw(mask).polygon(
             [(point.x, point.y) for point in hold.polygon.points], fill=255
         )
-        resized = mask.resize(
-            (self.IMAGE_SIZE, self.IMAGE_SIZE), PILImage.Resampling.NEAREST
-        )
-        coverage = torch.from_numpy(np.asarray(resized, dtype=np.float32) / 255.0).to(
-            device=tokens.device, dtype=tokens.dtype
-        )
-        grid_size = self.IMAGE_SIZE // self.PATCH_SIZE
-        coverage = (
-            coverage.reshape(grid_size, self.PATCH_SIZE, grid_size, self.PATCH_SIZE)
-            .mean(dim=(1, 3))
-            .flatten()
-        )
-        weights = coverage if self.pooling == "weighted" else coverage.gt(0)
-        weights = weights.to(dtype=tokens.dtype)
-        if not torch.any(weights):
-            x = max(0, min(grid_size - 1, hold.centroid.x * grid_size // image.width))
-            y = max(0, min(grid_size - 1, hold.centroid.y * grid_size // image.height))
-            weights[y * grid_size + x] = 1
-        embedding = (tokens * weights[:, None]).sum(0) / weights.sum()
-        return torch.nn.functional.normalize(embedding, dim=0)
+        if not mask.getbbox():
+            x = max(0, min(image.width - 1, hold.centroid.x))
+            y = max(0, min(image.height - 1, hold.centroid.y))
+            ImageDraw.Draw(mask).point((x, y), fill=255)
+        return mask
 
     @staticmethod
     def _lab_feature(image: Image, hold: Hold) -> np.ndarray:
@@ -263,4 +276,26 @@ class DINORouteDiscriminator(DINOv3):
             min_cluster_size=self.min_cluster_size,
             min_samples=self.min_samples,
             metric="precomputed",
+        ).fit_predict(distances)
+
+    def _cluster_labels(self, distances: np.ndarray) -> np.ndarray:
+        if self.clustering_method == "hdbscan":
+            return self._hdbscan_labels(distances)
+        try:
+            from sklearn.cluster import AgglomerativeClustering, DBSCAN
+        except ModuleNotFoundError as exc:
+            raise InvalidRouteDiscriminatorConfigError(
+                "DBSCAN and agglomerative clustering require the 'scikit-learn' package."
+            ) from exc
+        if self.clustering_method == "dbscan":
+            return DBSCAN(
+                eps=self.eps,
+                min_samples=self.min_samples or 5,
+                metric="precomputed",
+            ).fit_predict(distances)
+        return AgglomerativeClustering(
+            n_clusters=None,
+            distance_threshold=self.distance_threshold,
+            metric="precomputed",
+            linkage=self.linkage,
         ).fit_predict(distances)

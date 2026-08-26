@@ -38,17 +38,17 @@ def _create_mock_route_discriminator(
     return MockRouteDiscriminator(**config)
 
 
-def _create_dino_route_discriminator(
+def _create_dino_clustering_route_discriminator(
     config: Mapping[str, Any] = dict(),
 ) -> RouteDiscriminator:
-    from .dino_route_discriminator import DINORouteDiscriminator
+    from .dino_clustering_route_discriminator import DINOClusteringRouteDiscriminator
 
-    return DINORouteDiscriminator(**config)
+    return DINOClusteringRouteDiscriminator(**config)
 
 
 _AVAILABLE_ROUTE_DISCRIMINATORS_MAP: Mapping[str, _Constructor] = {
     "Triplet MLP": _create_triplet_route_discriminator,
-    "DINO": _create_dino_route_discriminator,
+    "DINO": _create_dino_clustering_route_discriminator,
     "Mock": _create_mock_route_discriminator,
 }
 AVAILABLE_ROUTE_DISCRIMINATORS = list(_AVAILABLE_ROUTE_DISCRIMINATORS_MAP.keys())

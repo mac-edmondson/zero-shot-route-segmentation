@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
+import numpy as np
 import torch
 from PIL import Image as PILImage
 from transformers import AutoImageProcessor, AutoModel
@@ -123,3 +125,64 @@ class DINOv3:
                 f"{tuple(patch_tokens.shape)}; expected {expected_shape}."
             )
         return patch_tokens[0].detach()
+
+    def extract_mask_embeddings(
+        self,
+        image: PILImage.Image,
+        masks: Sequence[PILImage.Image],
+        pooling: Literal["weighted", "mean"] = "weighted",
+    ) -> torch.Tensor:
+        """Return one normalized DINO embedding for every image-sized mask."""
+        if not isinstance(image, PILImage.Image):
+            raise TypeError("image must be a PIL.Image.Image.")
+        if pooling not in {"weighted", "mean"}:
+            raise ValueError("pooling must be either 'weighted' or 'mean'.")
+        if not isinstance(masks, Sequence):
+            raise TypeError("masks must be a sequence of PIL images.")
+        if not masks:
+            return torch.empty((0, self.HIDDEN_SIZE), device=self.device)
+        if any(
+            not isinstance(mask, PILImage.Image) or mask.size != image.size
+            for mask in masks
+        ):
+            raise ValueError("every mask must be a PIL image with the image's size.")
+
+        tokens = self.extract_patch_tokens(image)
+        return torch.stack(
+            [self.pool_mask_embedding(tokens, mask, pooling) for mask in masks]
+        )
+
+    def pool_mask_embedding(
+        self,
+        patch_tokens: torch.Tensor,
+        mask: PILImage.Image,
+        pooling: Literal["weighted", "mean"] = "weighted",
+    ) -> torch.Tensor:
+        """Pool patch tokens inside a mask and L2-normalize the result."""
+        if not isinstance(mask, PILImage.Image):
+            raise TypeError("mask must be a PIL.Image.Image.")
+        if pooling not in {"weighted", "mean"}:
+            raise ValueError("pooling must be either 'weighted' or 'mean'.")
+        if patch_tokens.shape != (self.NUM_PATCH_TOKENS, self.HIDDEN_SIZE):
+            raise ValueError(
+                "patch_tokens must have shape "
+                f"({self.NUM_PATCH_TOKENS}, {self.HIDDEN_SIZE})."
+            )
+
+        resized = mask.convert("L").resize(
+            (self.IMAGE_SIZE, self.IMAGE_SIZE), PILImage.Resampling.NEAREST
+        )
+        coverage = torch.from_numpy(np.asarray(resized, dtype=np.float32) / 255.0).to(
+            device=patch_tokens.device, dtype=patch_tokens.dtype
+        )
+        grid_size = self.IMAGE_SIZE // self.PATCH_SIZE
+        coverage = (
+            coverage.reshape(grid_size, self.PATCH_SIZE, grid_size, self.PATCH_SIZE)
+            .mean(dim=(1, 3))
+            .flatten()
+        )
+        weights = coverage if pooling == "weighted" else coverage.gt(0)
+        if not torch.any(weights):
+            raise ValueError("mask must contain at least one pixel.")
+        embedding = (patch_tokens * weights[:, None]).sum(0) / weights.sum()
+        return torch.nn.functional.normalize(embedding, dim=0)

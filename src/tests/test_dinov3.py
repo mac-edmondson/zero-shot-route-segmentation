@@ -3,6 +3,7 @@ from types import SimpleNamespace
 import pytest
 import torch
 from PIL import Image
+from PIL import ImageDraw
 
 from pipeline.utility import dinov3
 
@@ -75,6 +76,23 @@ def test_missing_model_files_fail_with_download_command(tmp_path):
     wrapper = dinov3.DINOv3(model_dir=tmp_path / "missing", device="cpu")
     with pytest.raises(FileNotFoundError, match="hf download"):
         wrapper.extract_patch_tokens(Image.new("RGB", (10, 10)))
+
+
+def test_extract_mask_embeddings_pools_and_normalizes_each_mask(monkeypatch):
+    wrapper = dinov3.DINOv3(device="cpu")
+    tokens = torch.ones(6400, 384)
+    monkeypatch.setattr(wrapper, "extract_patch_tokens", lambda _: tokens)
+    image = Image.new("RGB", (80, 40))
+    masks = []
+    for box in ((0, 0, 20, 20), (40, 20, 79, 39)):
+        mask = Image.new("L", image.size)
+        ImageDraw.Draw(mask).rectangle(box, fill=255)
+        masks.append(mask)
+
+    embeddings = wrapper.extract_mask_embeddings(image, masks)
+
+    assert embeddings.shape == (2, 384)
+    assert torch.allclose(torch.linalg.vector_norm(embeddings, dim=1), torch.ones(2))
 
 
 def test_rejects_invalid_image_and_unavailable_cuda(monkeypatch):

@@ -1,10 +1,13 @@
 from pathlib import Path
 
+import pytest
+from pathlib import Path
+
 from PIL import Image
 
 from pipeline.hold_detector.mask_rcnn_hold_detector import MaskRCNNHoldDetector
-from pipeline.route_discriminator.dino_route_discriminator import (
-    DINORouteDiscriminator,
+from pipeline.route_discriminator.dino_clustering_route_discriminator import (
+    DINOClusteringRouteDiscriminator,
 )
 from pipeline.route_discriminator_pipeline import RouteDiscriminatorPipeline
 
@@ -18,7 +21,7 @@ def test_real_mask_rcnn_dino_pipeline_marks_detected_routes() -> None:
     image = Image.open(INPUT_PATH).convert("RGB")
     pipeline = RouteDiscriminatorPipeline(
         hold_detector=MaskRCNNHoldDetector(),
-        route_discriminator=DINORouteDiscriminator(color_weight=0.0),
+        route_discriminator=DINOClusteringRouteDiscriminator(color_weight=0.0),
     )
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
