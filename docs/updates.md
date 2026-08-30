@@ -19,3 +19,15 @@ Retained evaluation inputs and completed A40 findings are documented in [evaluat
 ## Route classifiers
 
 Color-only and pretrained TripletNet route classifiers are available through `RouteClassifierFactory` as `color_only_classifier` and `triplet_route_classifier`.
+
+## DINO Learning training data
+
+The Bh dataset was reduced to the 8 images with route-labeled holds:
+`0003.jpg`, `0074.jpg`, `0075.jpg`, `0457.jpg`, `0502.jpg`, `0518.jpg`,
+`0530.jpg`, and `0917.jpg`. The other 1,053 images had no `route_id` and
+were removed because they cannot produce pairwise training examples.
+
+The retained annotations contain 587 route-labeled holds across 17 routes.
+With balanced sampling capped at 256 pairs per class per image, training
+produces 3,258 pairs: 1,629 positive and 1,629 negative. The seed-42 split
+used 2,234 training pairs and 1,024 validation pairs across 6 and 2 images.

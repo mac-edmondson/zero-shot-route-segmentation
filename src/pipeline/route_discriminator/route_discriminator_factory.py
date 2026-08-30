@@ -46,9 +46,18 @@ def _create_dino_clustering_route_discriminator(
     return DINOClusteringRouteDiscriminator(**config)
 
 
+def _create_dino_learning_route_discriminator(
+    config: Mapping[str, Any] = dict(),
+) -> RouteDiscriminator:
+    from .dino_learning_route_discriminator import DINOLearningRouteDiscriminator
+
+    return DINOLearningRouteDiscriminator(**config)
+
+
 _AVAILABLE_ROUTE_DISCRIMINATORS_MAP: Mapping[str, _Constructor] = {
     "Triplet MLP": _create_triplet_route_discriminator,
-    "DINO": _create_dino_clustering_route_discriminator,
+    "DINO Clustering": _create_dino_clustering_route_discriminator,
+    "DINO Learning": _create_dino_learning_route_discriminator,
     "Mock": _create_mock_route_discriminator,
 }
 AVAILABLE_ROUTE_DISCRIMINATORS = list(_AVAILABLE_ROUTE_DISCRIMINATORS_MAP.keys())

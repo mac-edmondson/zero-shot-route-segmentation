@@ -1,0 +1,23 @@
+{
+  "train_images": 6,
+  "val_images": 2,
+  "train_pairs": 2234,
+  "val_pairs": 1024,
+  "skipped": {
+    "images": 1053,
+    "regions": 86,
+    "missing_files": 1053,
+    "invalid_polygons": 0
+  },
+  "train_skipped": 0,
+  "val_skipped": 0,
+  "best": {
+    "epoch": 100,
+    "loss": 0.4952277042903006,
+    "accuracy": 0.775390625,
+    "f1": 0.7505422993492408
+  },
+  "seed": 42,
+  "pair_cap": 256,
+  "device": "cuda"
+}
