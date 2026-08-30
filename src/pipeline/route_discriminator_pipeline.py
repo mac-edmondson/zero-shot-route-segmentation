@@ -2,7 +2,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from .hold_detector import HoldDetector
-from .interfaces.data_models import Image, Route
+from .interfaces.data_models import Hold, Image, Route
 from .route_discriminator import RouteDiscriminator
 
 
@@ -42,7 +42,7 @@ class RouteDiscriminatorPipeline:
 
     @staticmethod
     def mark_holds(
-        images: Sequence[Image], routes: Sequence[Sequence[Route]]
+        images: Sequence[Image], routes: Sequence[Sequence[Hold]]
     ) -> Sequence[Image]:
         """Render hold overlays on an image."""
         return HoldDetector.mark_holds(images, routes)

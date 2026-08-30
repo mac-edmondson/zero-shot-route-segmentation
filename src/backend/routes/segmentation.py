@@ -3,6 +3,7 @@
 import logging
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Response
+from PIL import Image as PILImage
 
 from ..dependencies import get_session
 from ..schemas import Coordinate, SegmentRequest, SegmentStatusResponse
@@ -20,11 +21,12 @@ def _finish_segment_job(
     session: SessionState,
     generation: int,
     image_id: str | None,
+    image: PILImage.Image,
     coordinates: list[Coordinate],
 ) -> None:
     """Store detected segments unless the image generation changed."""
     try:
-        result = detect_segments(coordinates)
+        result = detect_segments(image, coordinates)
     except Exception as exc:
         logger.exception(
             "segmentation failed image_id=%s generation=%d", image_id, generation
@@ -55,9 +57,10 @@ def start_segmentation(
             raise _conflict("set a working image before segmenting")
         generation = session.generation
         image_id = session.working_image_id
+        image = session.working_image.copy()
         session.segment_job = JobState("processing")
     background_tasks.add_task(
-        _finish_segment_job, session, generation, image_id, body.coordinates
+        _finish_segment_job, session, generation, image_id, image, body.coordinates
     )
     logger.info(
         "segmentation queued image_id=%s generation=%d point_count=%d",

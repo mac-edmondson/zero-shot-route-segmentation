@@ -11,7 +11,7 @@ services:
       dockerfile: Dockerfile
     volumes:
       - type: bind
-        source: ${GALLERY_PATH}
+        source: ${GALLERY_PATH:-./data/evaluation}
         target: /gallery
         read_only: true
         bind:
@@ -50,6 +50,13 @@ services:
       context: .
       dockerfile: src/backend/Dockerfile
       target: production
+    volumes:
+      - type: bind
+        source: ./models/
+        target: /app/models
+        read_only: true
+        bind:
+          selinux: Z
     restart: unless-stopped
     environment:
       ENVIRONMENT: production

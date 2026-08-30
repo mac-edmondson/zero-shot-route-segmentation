@@ -5,9 +5,10 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Protocol
 
-from PIL import Image, ImageDraw
+from PIL import Image as PILImage
+from PIL import ImageDraw
 
-from ..interfaces.data_models import Hold
+from ..interfaces.data_models import Hold, Image
 from ..interfaces.errors import BatchAlignmentError
 
 
@@ -21,15 +22,15 @@ class HoldDetector(Protocol):
 
     @staticmethod
     def mark_holds(
-        images: Sequence[Image.Image], holds: Sequence[Sequence[Hold]]
-    ) -> Sequence[Image.Image]:
+        images: Sequence[Image], holds: Sequence[Sequence[Hold]]
+    ) -> Sequence[Image]:
         """Render hold polygons over copies of their source images."""
         if len(images) != len(holds):
             raise BatchAlignmentError("images and holds must align.")
         result = []
         for image, detected in zip(images, holds, strict=True):
             overlay = image.convert("RGB").copy()
-            fill_overlay = Image.new("RGBA", overlay.size, (0, 0, 0, 0))
+            fill_overlay = PILImage.new("RGBA", overlay.size, (0, 0, 0, 0))
             fill_draw = ImageDraw.Draw(fill_overlay)
             for hold in detected:
                 points = [
@@ -37,10 +38,15 @@ class HoldDetector(Protocol):
                     for point in (*hold.polygon.points, hold.polygon.points[0])
                 ]
                 fill_draw.polygon(points, fill=(255, 80, 0, 102))
-            overlay = Image.alpha_composite(overlay.convert("RGBA"), fill_overlay).convert("RGB")
+            overlay = PILImage.alpha_composite(
+                overlay.convert("RGBA"), fill_overlay
+            ).convert("RGB")
             draw = ImageDraw.Draw(overlay)
             for hold in detected:
-                points = [(point.x, point.y) for point in (*hold.polygon.points, hold.polygon.points[0])]
+                points = [
+                    (point.x, point.y)
+                    for point in (*hold.polygon.points, hold.polygon.points[0])
+                ]
                 draw.line(points, fill=(255, 80, 0), width=5)
             result.append(overlay)
         return result

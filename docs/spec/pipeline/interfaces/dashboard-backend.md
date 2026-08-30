@@ -1,6 +1,6 @@
 # Dashboard Backend API
 
-**Depends on:** [RouteDiscriminatorPipeline](route-discriminator-pipeline.md), [EvaluationSuite](evaluation-suite.md), optionally [AugmentationSuite](augmentation-suite.md)
+**Depends on:** [RouteDiscriminatorPipeline](route-discriminator-pipeline.md), [EvaluationSuite](evaluation-suite.md), optionally [image augmentations](augmentation-suite.md)
 **Consumed by:** [Dashboard Frontend](dashboard-frontend.md)
 
 **Note: While this is called a spec, what is defined in this document is not final and may not be implemented exactly as described. This is more of a rough outline defined for initial collaboration.***

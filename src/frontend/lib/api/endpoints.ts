@@ -60,6 +60,12 @@ interface InferWorkingResponse {
 
 const POLL_INTERVAL_MS = 500;
 const POLL_TIMEOUT_MS = 60_000;
+/** inferWorkingPipeline's own polling interval, below -- inference tends to
+ * run noticeably longer than segmentation/augmentation, so checking every
+ * 500ms like those two was mostly wasted requests. Segmentation/augmentation
+ * keep the faster 500ms (still POLL_INTERVAL_MS's default below) since they
+ * usually settle quickly and a snappier check there is worth it. */
+const INFERENCE_POLL_INTERVAL_MS = 3_000;
 
 /**
  * Segmentation, augmentation, and inference all run as background jobs on
@@ -70,6 +76,7 @@ const POLL_TIMEOUT_MS = 60_000;
  */
 async function pollUntilSettled<T extends { status: JobStatus }>(
   fetchStatus: () => Promise<T>,
+  intervalMs: number = POLL_INTERVAL_MS,
 ): Promise<T> {
   const deadline = Date.now() + POLL_TIMEOUT_MS;
   for (;;) {
@@ -78,7 +85,7 @@ async function pollUntilSettled<T extends { status: JobStatus }>(
     if (Date.now() >= deadline) {
       throw new ApiError("Timed out waiting for the backend to finish");
     }
-    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
   }
 }
 
@@ -109,10 +116,11 @@ export const restApiClient: RouteDetectionApiClient = {
     return mapWorkingImage(raw);
   },
 
-  async setWorkingImage(file) {
+  async setWorkingImage(file, options) {
     const form = new FormData();
     form.append("image", file);
-    await request("/image/working", { method: "PUT", body: form });
+    const query = options?.keepSegments ? "?keep_segments=true" : "";
+    await request(`/image/working${query}`, { method: "PUT", body: form });
   },
 
   async detectWorkingSegments(coordinates) {
@@ -162,8 +170,9 @@ export const restApiClient: RouteDetectionApiClient = {
   async inferWorkingPipeline() {
     await request("/pipeline/infer/working", { method: "POST" });
 
-    const raw = await pollUntilSettled(() =>
-      request<InferWorkingResponse>("/pipeline/infer/working"),
+    const raw = await pollUntilSettled(
+      () => request<InferWorkingResponse>("/pipeline/infer/working"),
+      INFERENCE_POLL_INTERVAL_MS,
     );
     if (raw.status === "failed") {
       throw new ApiError(raw.error ?? "Inference failed");

@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from statistics import median
 from types import MappingProxyType
-from typing import Any, TypeAlias
+from typing import Any
 
 from PIL import Image as PILImage
+from PIL import ImageDraw
 
-Image: TypeAlias = PILImage.Image
+Image = PILImage.Image
 
 
 @dataclass(frozen=True)
@@ -117,23 +119,32 @@ class Hold:
         if not isinstance(image, Image):
             raise TypeError("An image is required to calculate color.")
 
-        pixel = image.convert("RGB").getpixel(
-            (round(self.centroid.x), round(self.centroid.y))
+        source = image.convert("RGB")
+        points = self.polygon.points
+        left, top = min(point.x for point in points), min(point.y for point in points)
+        crop = source.crop(
+            (
+                left,
+                top,
+                max(point.x for point in points) + 1,
+                max(point.y for point in points) + 1,
+            )
         )
-
-        if (
-            pixel is not None
-            and not isinstance(pixel, float)
-            and not isinstance(pixel, int)
-        ):
-            assert (l := len(pixel)) == 3, (
-                f"For some reason the value returned for the pixel isn't RGB, it has len {l}."
+        mask = PILImage.new("1", crop.size)
+        ImageDraw.Draw(mask).polygon(
+            [(point.x - left, point.y - top) for point in points],
+            fill=1,
+        )
+        pixels = [
+            pixel
+            for pixel, selected in zip(
+                crop.get_flattened_data(), mask.get_flattened_data(), strict=True
             )
-            return RGBColor(*pixel)
-        else:
-            raise TypeError(
-                f"For some reason the pixel came back as an unexpected type: {type(pixel)}"
-            )
+            if selected
+        ]
+        return RGBColor(
+            *(round(median(channel)) for channel in zip(*pixels, strict=True))
+        )
 
 
 @dataclass(frozen=True)

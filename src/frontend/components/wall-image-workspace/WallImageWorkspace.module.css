@@ -191,6 +191,14 @@
   border-color: var(--accent);
 }
 
+/* Pushed to the row's own right end -- .lockedModelsSlot's chips/
+   Change model stay grouped on the left via normal flex flow, this one
+   auto-margins past them into the remaining space instead of needing a
+   separate wrapper the way .backToAugmentSlot does for the toolbar row. */
+.lockedModelsBackButton {
+  margin-left: auto;
+}
+
 /* Stands in for the toolbar, top-right, for the model-select gap between
    Finish Augment and a successful Recognition (see showBackToAugment in
    the component) -- unlike .toolbar/.lockedModelsSlot this is a bare
@@ -393,6 +401,22 @@
   opacity: 1;
   filter: blur(0);
   transform: translateY(0) scale(1);
+}
+
+/* Positions the Recognition loader (see FlyingLogoLoader, passed as its
+   className) -- FlyingLogoLoader itself has no layout opinion, so this is
+   what makes it share the same grid cell as SegmentPanel/modelSelectPanel/
+   routesPanel (via .segmentSlot > *) and center within it while the clone
+   is flying in/resting/flying out. */
+.recognitionLoaderSlot {
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
 }
 
 .routesSummary {
@@ -631,6 +655,19 @@
 .highlightHoldEnter {
   opacity: 0;
   animation: holdReveal 320ms var(--ease) both;
+  /* Dropping fill/filter above stopped the browser from repainting a
+     blurred region on every frame, but SVG child shapes still don't get
+     their own compositor layer automatically the way an animating HTML
+     element does -- without a hint, engines commonly still repaint (or
+     re-evaluate) a shared chunk of the <svg> on every staggered tick.
+     Barely visible with the ~20 holds this was last tuned against; with a
+     real Mask-RCNN wall (50+ holds, so 50+ ticks 70ms apart), that
+     per-tick cost compounds until the browser can't keep up and the
+     remaining holds visibly snap in in a batch instead of rolling in one
+     at a time -- the actual "page blinks partway through loading" bug.
+     will-change promotes each polygon to its own layer up front so every
+     tick only has to composite, never repaint. */
+  will-change: opacity, transform;
 }
 
 /* All currently-shown holds vanish together (no stagger) before the next
@@ -649,6 +686,10 @@
 
 .highlightHoldLeave {
   animation: holdLeave 220ms var(--ease) both;
+  /* Same reasoning as .highlightHoldEnter's will-change -- arguably more
+     needed here, since leave has no stagger at all: all 50+ holds start
+     animating in the exact same frame rather than 70ms apart. */
+  will-change: opacity, transform;
 }
 
 @media (max-width: 760px) {

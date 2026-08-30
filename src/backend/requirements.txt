@@ -12,6 +12,7 @@ pillow>=10.0
 opencv-python-headless>=5.0.0.93
 hdbscan
 scikit-learn>=1.4
---extra-index-url https://download.pytorch.org/whl/cpu
-torch==2.13.0
-torchvision==0.28.0
+transformers==5.15.0
+
+# Needed for the YOLOv8 hold detector. (This is only for the base build for docker, for production builds it is already present in .toml file.)
+ultralytics==8.4.126

@@ -81,7 +81,7 @@ class AugmentWorkingImageRequest(BaseModel):
 
     model_config = ConfigDict(alias_generator=to_camel)
 
-    lighting_percent: float = Field(ge=-100, le=100, default=0)
+    lighting_percent: float = Field(ge=-1, le=1, default=0)
     segments: list[SegmentAugmentation] = Field(default_factory=list)
 
 

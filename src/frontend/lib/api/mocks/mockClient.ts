@@ -185,7 +185,7 @@ export const mockApiClient: RouteDetectionApiClient = {
     return delay(result);
   },
 
-  async setWorkingImage(file) {
+  async setWorkingImage(file, options) {
     const dataUrl = await fileToDataUrl(file);
     const summary: StoredImage = {
       id: createId("img"),
@@ -195,7 +195,12 @@ export const mockApiClient: RouteDetectionApiClient = {
     };
     images.set(summary.id, summary);
     workingImageId = summary.id;
-    segments.clear();
+    // Mirrors the real backend's keep_segments query param (see
+    // src/backend/routes/working_image.py) -- a fresh upload still clears
+    // segments, a Back to Augment reset doesn't.
+    if (!options?.keepSegments) {
+      segments.clear();
+    }
     await delay(undefined);
   },
 

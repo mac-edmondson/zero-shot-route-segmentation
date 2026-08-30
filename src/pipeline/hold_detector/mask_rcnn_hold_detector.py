@@ -10,9 +10,9 @@ from typing import Any
 import cv2
 import numpy as np
 import torch
-from PIL import Image, ImageDraw
 
-from ..interfaces.data_models import Coordinate, Hold, Polygon
+from .hold_detector import HoldDetector
+from ..interfaces.data_models import Coordinate, Hold, Polygon, Image
 from ..interfaces.errors import BatchAlignmentError, InvalidImageError
 
 
@@ -22,7 +22,8 @@ class MaskRCNNHoldDetector:
 
     def __init__(
         self,
-        config_path: str | Path = "models/mask_rcnn_hold_detector/experiment_config.yml",
+        config_path: str
+        | Path = "models/mask_rcnn_hold_detector/experiment_config.yml",
         weights_path: str | Path = "models/mask_rcnn_hold_detector/model_final.pth",
         device: str | torch.device | None = None,
         score_threshold: float | None = None,
@@ -112,15 +113,15 @@ class MaskRCNNHoldDetector:
         )
 
     @staticmethod
-    def _validate_images(images: Sequence[Image.Image]) -> None:
+    def _validate_images(images: Sequence[Image]) -> None:
         if (
             isinstance(images, (str, bytes))
             or not isinstance(images, Sequence)
-            or any(not isinstance(i, Image.Image) for i in images)
+            or any(not isinstance(i, Image) for i in images)
         ):
             raise InvalidImageError("images must be a sequence of PIL images.")
 
-    def get_holds(self, images: Sequence[Image.Image]) -> list[list[Hold]]:
+    def get_holds(self, images: Sequence[Image]) -> Sequence[Sequence[Hold]]:
         self._validate_images(images)
         if self.model is None:
             self.load_model()
@@ -189,3 +190,7 @@ class MaskRCNNHoldDetector:
                 "implementation_id": cls.implementation_id,
             },
         )
+
+    @staticmethod
+    def mark_holds(images, holds):
+        return HoldDetector.mark_holds(images, holds)

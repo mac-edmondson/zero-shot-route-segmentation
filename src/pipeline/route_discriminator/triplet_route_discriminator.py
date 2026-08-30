@@ -10,6 +10,7 @@ import numpy as np
 import torch
 from PIL import Image, ImageDraw
 
+from .route_discriminator import RouteDiscriminator
 from ..interfaces.data_models import Hold, Route
 from ..interfaces.errors import BatchAlignmentError
 
@@ -137,25 +138,4 @@ class TripletRouteDiscriminator:
 
     @staticmethod
     def mark_routes(images, routes):
-        if len(images) != len(routes):
-            raise BatchAlignmentError("images and routes must align.")
-        output = []
-        for image, batch in zip(images, routes):
-            overlay = image.convert("RGB").copy()
-            draw = ImageDraw.Draw(overlay)
-            for route in batch:
-                for hold in route.holds:
-                    draw.line(
-                        [
-                            (p.x, p.y)
-                            for p in (*hold.polygon.points, hold.polygon.points[0])
-                        ],
-                        fill=(
-                            (route.route_id * 97) % 255,
-                            (route.route_id * 57) % 255,
-                            (route.route_id * 37) % 255,
-                        ),
-                        width=3,
-                    )
-            output.append(overlay)
-        return output
+        return RouteDiscriminator.mark_routes(images, routes)

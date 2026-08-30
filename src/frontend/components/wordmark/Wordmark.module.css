@@ -59,6 +59,46 @@
   stroke-dashoffset: 0;
 }
 
+/* Loop mode's version of .routeIn's one-shot reveal -- see WordmarkProps.loop
+   -- the same draw (stroke-dashoffset: path-length -> 0), but instead of
+   redrawing on its own independent timer, this now shares one cycle length
+   (--loop-cycle) *and* the same 0-90% timing window as route-loop-spark
+   below: line-drawn-so-far and spark-position move in lockstep the entire
+   time, so the spark reads as leading/guiding the route into existence at
+   its own tip, rather than a separate light that shows up before or after
+   the line's already there. Holds fully-drawn from 90-100% (a beat once
+   the spark's arrived, before the loop wraps and both reset together for
+   the next pass). Overrides the plain .routeLine transition above by
+   replacing it with an animation (animation wins over a property
+   transition on the same property). linear, not var(--ease) -- a steady,
+   constant-speed draw is what reads as "traveling" the path; var(--ease)'s
+   fast-start-slow-end curve would instead look like the line racing ahead
+   of (or lagging behind) wherever that math put the spark at any given
+   moment. */
+.routeLoop {
+  --loop-cycle: 1.5s;
+}
+
+.routeLoop .routeLine {
+  animation: route-loop-line var(--loop-cycle) linear infinite;
+}
+
+/* 90% is "the spark has arrived, the line is fully drawn" -- this same
+   number has to match route-loop-dashed and route-loop-spark below (see
+   route-loop-spark's own comment for why it can't just be one shared
+   variable). */
+@keyframes route-loop-line {
+  0% {
+    stroke-dashoffset: var(--path-length);
+  }
+  90% {
+    stroke-dashoffset: 0;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
 .routeDashed {
   /* stroke-dasharray is computed and set imperatively (see Wordmark.tsx) so
      the solid "bridge" at the seam can be measured against the real path
@@ -69,6 +109,40 @@
 
 .routeIn .routeDashed {
   opacity: 1;
+}
+
+/* Loop mode's version of the above -- the dashed tail is past where the
+   spark ever actually travels (see route-loop-spark), so instead of also
+   being led by the spark it just lights up as the solid line's own
+   guided draw is finishing, reading as "the rest of the route completing
+   itself" right behind the spark's arrival, then holds with everything
+   else until the loop wraps. */
+.routeLoop .routeDashed {
+  animation: route-loop-dashed var(--loop-cycle) var(--ease) infinite;
+}
+
+@keyframes route-loop-dashed {
+  0%,
+  82% {
+    opacity: 0;
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+/* Freezes the loop exactly where it currently is -- see WordmarkProps.paused
+   -- used while the recognition loader clone is flying back to the real
+   logo, so the route/spark aren't visibly still redrawing/traveling at the
+   same time the whole clone is moving and fading (which read as busy
+   rather than smooth). */
+.routePaused .routeLine,
+.routePaused .routeDashed,
+.routePaused .spark {
+  animation-play-state: paused;
 }
 
 .climber {
@@ -106,9 +180,15 @@
   animation: travel 3.4s var(--ease) infinite;
 }
 
+/* The real (non-loop) logo's own spark -- restored here after an editing
+   mistake dropped it entirely while route-loop-spark below was being split
+   out as its own separate keyframes. Untouched by any of the loop work:
+   still exactly what it was tuned to (starts 10% along the path, no
+   fade-out at the end -- a hard cut back to invisible/10% when the
+   animation loops instead). */
 @keyframes travel {
   0% {
-    offset-distance: 0%;
+    offset-distance: 10%;
     opacity: 0;
   }
   8% {
@@ -119,6 +199,42 @@
   }
   100% {
     offset-distance: 100%;
+    opacity: 1;
+  }
+}
+
+/* Loop mode's own spark keyframes -- deliberately separate from .spark's
+   base `travel` above (which stays exactly as tuned for the real logo's
+   forever-running spark, untouched by any of this), and now the thing the
+   whole cycle is actually timed against rather than the other way around:
+   offset-distance moves start-to-end across the *same* 0-90% window
+   route-loop-line's own stroke-dashoffset draws across, both linear, so at
+   any instant the drawn-so-far length and the spark's position are the
+   same point on the path -- the spark leading/guiding the line into
+   existence at its own tip, not a separate light doing its own thing. Set
+   these two blocks' 0%/90% to the same numbers if either ever changes;
+   keyframe selectors can't reference a custom property, or this would
+   just be one variable. Fades in fast right at the start (so it's visibly
+   leading from the very first frame, not trailing) and fades out shortly
+   after arriving, then both this and the line hold until the loop wraps. */
+.routeLoop .spark {
+  animation: route-loop-spark var(--loop-cycle) linear infinite;
+}
+
+@keyframes route-loop-spark {
+  0% {
+    offset-distance: 0%;
+    opacity: 0;
+  }
+  5% {
+    opacity: 1;
+  }
+  90% {
+    offset-distance: 100%;
+    opacity: 1;
+  }
+  96%,
+  100% {
     opacity: 0;
   }
 }
@@ -133,5 +249,22 @@
 
   .spark {
     display: none;
+  }
+
+  /* The loop variants use animation, not transition, so the rule above
+     doesn't reach them -- settle on the same "fully drawn, fully visible"
+     end state .routeIn's own zeroed transition lands on above, rather than
+     looping indefinitely regardless of motion preference. */
+  .routeLoop .routeLine,
+  .routeLoop .routeDashed {
+    animation: none;
+  }
+
+  .routeLoop .routeLine {
+    stroke-dashoffset: 0;
+  }
+
+  .routeLoop .routeDashed {
+    opacity: 1;
   }
 }

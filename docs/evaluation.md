@@ -9,7 +9,7 @@ The CSV labels `hold` and `volume`; the quantitative evaluation scores `hold` on
 
 ## Environment
 
-Experiments used the local SAM3 video model at `/home/vault/v123be/v123be56/LIT/models/sam3` in the `lit` Conda environment on one NVIDIA A40 GPU. The final multi-exemplar job ran on A40 node `a0127` and completed in 2m42s.
+Experiments used the local SAM3 video model at `models/sam3` in the `lit` Conda environment on one NVIDIA A40 GPU. The final multi-exemplar job ran on A40 node `a0127` and completed in 2m42s.
 
 ## Completed evaluation
 

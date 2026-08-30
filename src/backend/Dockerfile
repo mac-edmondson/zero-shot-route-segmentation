@@ -15,24 +15,36 @@ RUN /venv/bin/pip install --no-cache-dir --upgrade \
     pip \
     setuptools \
     wheel
-RUN /venv/bin/pip install --no-cache-dir -r requirements.txt
+# Do some tom foolery to try and ensure detectron2 install get's cached cause it takes a little while.
+RUN /venv/bin/pip install --no-cache-dir -r pre-detectron.requirements.txt
 RUN /venv/bin/pip install --no-cache-dir --no-build-isolation -r detectron.requirements.txt
-
-
-FROM python:3.12-slim AS base
-
-COPY --from=builder /venv /venv
-ENV PATH="/venv/bin:$PATH"
 
 # Ensure models needed for runtime inference are baked into the image
 ENV TORCH_HOME=/opt/torch-cache
-RUN python - <<'PY'
+RUN /venv/bin/python - <<'PY'
 from torchvision.models import resnet50, ResNet50_Weights
 resnet50(weights=ResNet50_Weights.IMAGENET1K_V2)
 PY
 
-COPY models ./models
+# Install the rest of the packages
+RUN /venv/bin/pip install --no-cache-dir -r requirements.txt \
+    && /venv/bin/pip uninstall -y opencv-python opencv-python-headless \
+    && /venv/bin/pip install --no-cache-dir opencv-python-headless
+
+FROM python:3.12-slim AS base
+
+WORKDIR /app
+
+COPY --from=builder /venv /venv
+ENV PATH="/venv/bin:$PATH"
+
+COPY --from=builder /opt/torch-cache /opt/torch-cache
+ENV TORCH_HOME=/opt/torch-cache
+
+
 COPY src ./src
+
+# VOLUME /app/models # A volume must be bind-mounted into this image to work!
 
 EXPOSE 8000
 CMD ["uvicorn", "src.backend.main:app", "--host", "0.0.0.0", "--port", "8000"]

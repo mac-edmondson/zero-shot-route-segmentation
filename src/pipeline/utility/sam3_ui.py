@@ -6,7 +6,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from numbers import Real
 from pathlib import Path
-from typing import Any, TypeAlias
+from typing import Any
 
 import cv2
 import numpy as np
@@ -30,7 +30,7 @@ class SAM3Base:
 
     def __init__(
         self,
-        model_dir: str | Path = "/home/vault/v123be/v123be56/LIT/models/sam3",
+        model_dir: str | Path = "models/sam3",
         device: str | torch.device | None = None,
     ) -> None:
         self.model_dir = Path(model_dir)
@@ -109,7 +109,7 @@ class SAM3Base:
         return np.equal(masks, 1)
 
 
-Exemplar: TypeAlias = tuple[Image.Image, np.ndarray]
+type Exemplar = tuple[Image.Image, np.ndarray]
 
 
 @dataclass(frozen=True)
@@ -125,7 +125,14 @@ class SAM3HoldWrapper(SAM3Base):
 
     def load_model(self) -> None:
         """Load the configured local SAM3 video model and processor."""
-        self._require_model_files(("config.json", "model.safetensors"))
+        self._require_model_files(("config.json",))
+        if not any(
+            (self.model_dir / name).is_file()
+            for name in ("model.safetensors", "model.safetensors.index.json")
+        ):
+            raise FileNotFoundError(
+                f"Model weights for 'SAM3' were not found in '{self.model_dir}'."
+            )
         self.processor = Sam3VideoProcessor.from_pretrained(
             self.model_dir, local_files_only=True
         )
@@ -273,7 +280,7 @@ class SAMWrapper(SAM3Base):
     def __init__(
         self,
         model_id: str = "facebook/sam3",
-        model_dir: str | Path = "/home/vault/v123be/v123be56/LIT/models/sam3",
+        model_dir: str | Path = "models/sam3",
         device: str | torch.device | None = None,
     ) -> None:
         self.model_id = model_id
@@ -316,9 +323,18 @@ class SAMWrapper(SAM3Base):
             for key, value in inputs.items()
         }
         with torch.inference_mode():
-            outputs = self.model(**model_inputs, multimask_output=False)
+            outputs = self.model(**model_inputs, multimask_output=True)
+        best_indices = outputs.iou_scores.argmax(dim=-1)
+        mask_indices = best_indices[..., None, None, None].expand(
+            -1,
+            -1,
+            1,
+            outputs.pred_masks.shape[-2],
+            outputs.pred_masks.shape[-1],
+        )
+        best_masks = torch.gather(outputs.pred_masks, 2, mask_indices)
         processed = self.processor.post_process_masks(
-            outputs.pred_masks.detach().cpu(),
+            best_masks.detach().cpu(),
             inputs["original_sizes"].cpu(),
             binarize=True,
         )
@@ -365,11 +381,9 @@ class SAMWrapper(SAM3Base):
 
     @staticmethod
     def to_polygons(
-        original_resized_masks: np.ndarray, simplify_tolerance: float = 0.01
+        original_resized_masks: np.ndarray,
     ) -> list[list[list[int]]]:
-        """Convert binary masks into simplified external-contour polygons."""
-        if not isinstance(simplify_tolerance, Real) or simplify_tolerance < 0:
-            raise ValueError("simplify_tolerance must be a non-negative number.")
+        """Convert binary masks into unsimplified external-contour polygons."""
         masks = SAMWrapper._binary_masks(original_resized_masks)
         polygons: list[list[list[int]]] = []
         for mask in masks:
@@ -383,10 +397,8 @@ class SAMWrapper(SAM3Base):
             if cv2.contourArea(contour) <= 0:
                 polygons.append([])
                 continue
-            simplified = cv2.approxPolyDP(
-                contour, float(simplify_tolerance) * cv2.arcLength(contour, True), True
-            ).reshape(-1, 2)
-            polygons.append([[int(x), int(y)] for x, y in simplified])
+            contour = contour.reshape(-1, 2)
+            polygons.append([[int(x), int(y)] for x, y in contour])
         return polygons
 
     @staticmethod
