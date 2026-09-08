@@ -47,10 +47,18 @@ def _create_ground_truth_route_discriminator(
 
     return GroundTruthRouteDiscriminator(**config)
 
+def _create_color_only_route_discriminator(
+    config: Mapping[str, Any] = dict(),
+) -> RouteDiscriminator:
+    from .color_only_route_discriminator import ColorOnlyRouteDiscriminator
+
+    return ColorOnlyRouteDiscriminator(**{"n_clusters": 6, "color_space": "cielab", **config})
+
 
 _AVAILABLE_ROUTE_DISCRIMINATORS_MAP: Mapping[str, _Constructor] = {
     "Triplet MLP": _create_triplet_route_discriminator,
     "Ground Truth": _create_ground_truth_route_discriminator,
+    "Color Only": _create_color_only_route_discriminator,
     "Mock": _create_mock_route_discriminator,
 }
 AVAILABLE_ROUTE_DISCRIMINATORS = list(_AVAILABLE_ROUTE_DISCRIMINATORS_MAP.keys())

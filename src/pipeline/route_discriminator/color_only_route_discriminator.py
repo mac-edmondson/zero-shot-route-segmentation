@@ -14,16 +14,20 @@ class ColorOnlyRouteDiscriminator:
         n_clusters: int,
         clustering_method="kmeans",
         random_state: int | None = 0,
+        color_space: str = "rgb",
         **config,
     ):
         if not isinstance(n_clusters, int) or n_clusters <= 0:
             raise ValueError("n_clusters must be positive.")
         if clustering_method != "kmeans":
             raise ValueError("Only kmeans is supported.")
-        self.n_clusters, self.clustering_method, self.random_state = (
+        if color_space not in ("rgb", "cielab"):
+            raise ValueError("color_space must be 'rgb' or 'cielab'.")
+        self.n_clusters, self.clustering_method, self.random_state, self.color_space = (
             n_clusters,
             clustering_method,
             random_state,
+            color_space,
         )
 
     @property
@@ -32,6 +36,7 @@ class ColorOnlyRouteDiscriminator:
             "n_clusters": self.n_clusters,
             "clustering_method": self.clustering_method,
             "random_state": self.random_state,
+            "color_space": self.color_space,
         }
 
     def get_routes(self, images, holds):
@@ -57,6 +62,8 @@ class ColorOnlyRouteDiscriminator:
         cv2.fillPoly(
             m, [np.array([(p.x, p.y) for p in hold.polygon.points], np.int32)], 1
         )
+        if self.color_space == "cielab":
+            a = cv2.cvtColor(a, cv2.COLOR_RGB2LAB)
         return a[m.astype(bool)].mean(0)
 
     def _kmeans(self, x, k):

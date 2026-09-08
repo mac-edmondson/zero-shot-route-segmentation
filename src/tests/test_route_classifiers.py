@@ -33,3 +33,15 @@ def test_color_discriminator_validates_batch_alignment():
         discriminator.get_routes([Image.new("RGB", (1, 1))], [])
     with pytest.raises(BatchAlignmentError):
         discriminator.mark_routes([Image.new("RGB", (1, 1))], [])
+
+
+def test_color_discriminator_cielab_smoke():
+    image = Image.new("RGB", (10, 10))
+    draw = ImageDraw.Draw(image)
+    draw.polygon([(1, 1), (3, 1), (1, 3)], fill=(255, 0, 0))
+    draw.polygon([(6, 6), (8, 6), (6, 8)], fill=(0, 0, 255))
+    discriminator = ColorOnlyRouteDiscriminator(n_clusters=2, color_space="cielab")
+    routes = discriminator.get_routes([image], [holds()])
+    assert len(routes) == 1
+    assert sorted(len(route.holds) for route in routes[0]) == [1, 1]
+    assert discriminator.configuration["color_space"] == "cielab"
