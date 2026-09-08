@@ -21,9 +21,15 @@ class DINOLearningRouteDiscriminator(DINOClusteringRouteDiscriminator):
 
     implementation_id = "dino_learning_route_discriminator"
 
+    _WEIGHTS = (
+        Path(__file__).resolve().parents[3]
+        / "models"
+        / "dino_learning_route_discriminator.pt"
+    )
+
     def __init__(
         self,
-        weights_path: str | Path,
+        weights_path: str | Path | None = None,
         pooling: str = "weighted",
         model_dir: str | Path = "models/dinov3",
         device: str | torch.device | None = None,
@@ -43,7 +49,7 @@ class DINOLearningRouteDiscriminator(DINOClusteringRouteDiscriminator):
                 "pair_threshold must be a number in [0, 1]."
             )
         DINOv3.__init__(self, model_dir=model_dir, device=device)
-        self.weights_path = Path(weights_path)
+        self.weights_path = Path(weights_path) if weights_path is not None else self._WEIGHTS
         self.pooling, self.pair_threshold = pooling, float(pair_threshold)
         self.head = DINOPairwiseHead().to(self.device)
         self._head_loaded = False

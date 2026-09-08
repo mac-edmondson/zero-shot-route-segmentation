@@ -46,6 +46,8 @@ def _create_ground_truth_route_discriminator(
     )
 
     return GroundTruthRouteDiscriminator(**config)
+
+
 def _create_dino_clustering_route_discriminator(
     config: Mapping[str, Any] = dict(),
 ) -> RouteDiscriminator:
