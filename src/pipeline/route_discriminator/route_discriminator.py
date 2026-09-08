@@ -5,7 +5,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Protocol
 
-from PIL import Image as PILImage, ImageDraw
+from PIL import Image as PILImage
+from PIL import ImageDraw
 
 from ..interfaces.data_models import Hold, Image, Route
 from ..interfaces.errors import BatchAlignmentError
@@ -55,7 +56,7 @@ class RouteDiscriminator(Protocol):
                         (point.x, point.y)
                         for point in (*hold.polygon.points, hold.polygon.points[0])
                     ]
-                    fill_draw.polygon(points, fill=(*color, 102))
+                    fill_draw.polygon(points, fill=(*color, 75))
             overlay = PILImage.alpha_composite(
                 overlay.convert("RGBA"), fill_overlay
             ).convert("RGB")

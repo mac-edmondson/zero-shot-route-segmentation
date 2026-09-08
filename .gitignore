@@ -34,5 +34,7 @@ Project\ stuff/
 
 #output files
 data/test-rcnn-pipeline
+data/test-dino-pipeline
 data/roboflow_dataset
 data/test-yolo-pipeline
+data/bh
