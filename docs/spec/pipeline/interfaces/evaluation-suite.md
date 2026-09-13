@@ -17,9 +17,17 @@ Run reproducible evaluations and gather results for:
 
 ![Evaluation Spec. Diagram](/docs/diagrams/spec_experiment_pipeline.drawio.svg)
 
-## TODO: This needs actually implemented and some details in this spec filled in
+## 3. Result contract
 
-Some general ideas are given in the below sections but these should not be taken as gospel by any stretch.
+The first implementation increment is the contract and pure reporting utilities in `src/pipeline/evaluation/`. It does not run models or persist files.
+
+`EvaluationReport` contains run identity, target, dataset/model descriptors, one required `clean` block, and an optional separate `distorted` block. Each block contains `EvaluationCaseResult` values preserving stable image/source IDs, split, augmentation metadata, status, timing, structured predictions and annotations, and scalar metrics.
+
+Statuses are `evaluated`, `unevaluable`, and `error`. Missing ground truth is unevaluable; failed cases are recorded as errors. Correctness aggregates exclude both statuses while retaining their counts. All result types expose `to_dict()`, and `metric_rows(report)` returns flat JSON-safe records for tables and plots. PIL images are deliberately not serializable.
+
+## 4. Metrics
+
+Hold evaluation uses deterministic one-to-one polygon matching with pixel IoU and a default threshold of `0.50`, reporting TP, FP, FN, precision, recall, F1, and mean matched IoU. Route evaluation uses `Hold.attributes["route_id"]` for annotations; predicted holds are linked by hold matches, then routes are matched one-to-one by maximum hold-membership F1.
 
 ### 4. Provenance
 
