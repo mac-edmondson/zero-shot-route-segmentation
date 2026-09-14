@@ -52,7 +52,7 @@ services:
       target: base
     volumes:
       - type: bind
-        source: ./models/
+        source: ${MODELS_PATH:-./models/}
         target: /app/models
         read_only: true
         bind:
