@@ -50,8 +50,3 @@ COPY data ./data
 
 EXPOSE 8000
 CMD ["uvicorn", "src.backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
-
-FROM base AS production
-COPY pyproject.toml README.md ./
-RUN pip install --no-cache-dir .
-

@@ -49,7 +49,7 @@ services:
     build:
       context: .
       dockerfile: src/backend/Dockerfile
-      target: production
+      target: base
     volumes:
       - type: bind
         source: ./models/
