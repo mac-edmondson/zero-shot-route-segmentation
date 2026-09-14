@@ -76,14 +76,12 @@ function smoothPath(points: Point[]): string {
 }
 
 /**
- * The ROUTNet logotype, following the hand sketch in
- * Project stuff/Logo.jpeg: a marked hold before the "R", a route that
+ * The ROUTNet logotype: a marked hold before the "R", a route that
  * weaves through the word at hand height, breaking into a dashed line as
  * it climbs past "Ne", and a tiny climber topping out with both arms
- * raised above the "t". Waypoints are fractions of the *measured* word
- * bounding box (via SVG getBBox), so the route stays anchored to the real
- * glyphs regardless of font or text changes -- only the summit uses the
- * last character's own box, so it lands precisely at the final letter.
+ * raised above the "t". Waypoints are fractions of the measured word
+ * bounding box (via SVG getBBox), keeping the route anchored to the rendered
+ * glyphs dynamically.
  */
 export function Wordmark({ text, loop = false, paused = false }: WordmarkProps) {
   const uid = useId();

@@ -82,10 +82,9 @@ function Connector({ state }: { state: NodeState }) {
 }
 
 /**
- * Three-step route through the product -- Upload, Augment, Recognition --
- * standing in for the old plain-sentence hint. Reuses the wordmark's own
- * hold/route visual language (lit vs. unlit holds, a connector that reads
- * as a little route segment) instead of a generic numbered stepper.
+ * Three-step route through the product: Upload, Augment, Recognition.
+ * Reuses the wordmark's hold/route visual language (lit vs. unlit holds,
+ * connector line segments) instead of a generic numbered stepper.
  *
  * Every node starts fully dim (unfilled, no glow) rather than pre-highlighted
  * as "current" -- each one only lights up as a *reaction* to something the

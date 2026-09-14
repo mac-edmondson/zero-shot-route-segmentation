@@ -18,7 +18,7 @@ interface SegmentCardProps {
   onChooseColor: () => void;
 }
 
-/** One "Segment N" card with its Chalk slider and color eyedropper, from the ROUTNet wireframe. */
+/** One "Segment N" card with its Chalk slider and color eyedropper. */
 export function SegmentCard({
   index,
   chalkPercent,

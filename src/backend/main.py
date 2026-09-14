@@ -16,9 +16,7 @@ logging.basicConfig(
 
 app = FastAPI(title="ROUTNet Dashboard Backend")
 
-# Frontend dev origin, overridable via env rather than hardcoded (same "put
-# it in .env, not in code" preference as the frontend's own API_BASE_URL /
-# image-server base URL).
+# Allowed CORS origin for frontend requests, configurable via env.
 _frontend_origin = os.environ.get("FRONTEND_ORIGIN", "http://localhost:3000")
 
 app.add_middleware(

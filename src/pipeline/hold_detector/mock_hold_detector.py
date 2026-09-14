@@ -16,9 +16,7 @@ MIN_NUM_POINTS_PER_HOLD = 10
 MAX_NUM_POINTS_PER_HOLD = 200
 
 # Distance from a hold's generated centroid to each vertex, in pixels.
-# Note: if this isn't 1, tests fall into some weird
-# infinite loop situation. Don't think about it, much. Just leave it as is though
-# , lol.
+# Must be at least 1 to ensure valid polygon geometry.
 MIN_POINT_DISTANCE = 1
 MAX_POINT_DISTANCE = 100
 

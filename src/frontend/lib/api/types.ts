@@ -64,10 +64,7 @@ export interface WorkingImage {
 
 /**
  * A user-marked region on the working image -- "segment" in the REST spec,
- * conceptually a `Hold` in the shared data model. The user clicks a point,
- * the backend runs it through a segmentation model (currently a mock
- * stand-in for SAM3 -- see docs/spec/pipeline/interfaces/hold-detector.md)
- * and returns a polygon outline for it.
+ * conceptually a `Hold` in the shared data model.
  */
 export interface Segment {
   segmentId: string;
@@ -94,21 +91,15 @@ export interface AugmentWorkingImageRequest {
 }
 
 /**
- * Stable identifiers for swappable hold-detector implementations, per
- * docs/diagrams/spec_rest_api.drawio.svg's PUT /pipeline sketch. Not yet
- * wired to real distinct behavior server-side -- only "mock"
- * (src/pipeline/hold_detector/mock_hold_detector.py) does anything today,
- * so the real backend currently ignores this value's content (still sends
- * it, for forward compatibility once SAM3/yolov8/etc. land for real).
- * Left as plain `string` rather than a literal union since the actual set
- * of valid values is decided server-side (hold_detector_factory's own
- * registry, surfaced to the UI by {@link AvailableConfigs}/
- * `getAvailableConfigs` below) and can grow without a frontend deploy.
+ * Identifier for a registered hold-detector implementation.
+ * String rather than literal union as the available methods are decided
+ * dynamically by the backend registry (see {@link AvailableConfigs}).
  */
 export type HoldDetectorMethod = string;
 
-/** Same situation as {@link HoldDetectorMethod}, for route-discriminator
- * implementations -- only "mock" (mock_route_discriminator.py) exists. */
+/**
+ * Identifier for a registered route-discriminator implementation.
+ */
 export type RouteClassifierMethod = string;
 
 export interface PipelineConfig {

@@ -523,17 +523,9 @@ export function ImageCanvas({
     }, "image/png");
   }
 
-  // Mask-RCNN's contours come back effectively pixel-precise -- hundreds to
-  // low-thousands of points per hold, unsimplified -- so serializing them
-  // into SVG's `points` format is real work, not a rounding error. Doing
-  // it inline in JSX (the old code) reran that work, for every segment,
-  // on every render -- including the high-frequency ones that have
-  // nothing to do with the polygons themselves: color-pick hover and pan
-  // both setState on every mousemove. With enough holds/vertices that adds
-  // up to a main-thread-blocking amount of string-building 60+ times a
-  // second while dragging. Memoized here so it only redoes the work when
-  // `segments` itself actually changes (a hold added/removed/redetected),
-  // not on every unrelated re-render.
+  // Complex hold contours contain hundreds to thousands of points per hold.
+  // Memoizing their SVG `points` string serialization avoids running string
+  // construction during high-frequency mousemove events (panning, hover).
   const polygonPointsById = useMemo(() => {
     const map = new Map<string, string>();
     for (const segment of segments) {

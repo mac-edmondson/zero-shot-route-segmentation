@@ -21,9 +21,7 @@ interface LabeledSliderProps {
 }
 
 /**
- * Label + range input + readout, matching the "Lighting" and per-segment
- * "Chalk" sliders in the ROUTNet wireframe (Project stuff/UI_page_1.png),
- * redressed with a filled accent track.
+ * Label + range input + readout slider with filled accent track.
  */
 export function LabeledSlider({
   label,

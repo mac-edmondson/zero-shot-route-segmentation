@@ -45,12 +45,7 @@ def _reset_working_image_keep_segments(session: SessionState, image: Any) -> Non
 @router.put("/image/working", status_code=200)
 async def set_working_image(
     image: UploadFile = File(...),
-    # Query param (no Form()/Query() marker needed -- FastAPI infers query
-    # for a plain-typed param on a route that already consumes File/Form
-    # body parts): PUT /image/working?keep_segments=true. Defaults to False
-    # so every existing caller (a real new upload) keeps today's behavior
-    # unchanged; only handleBackToAugment's re-PUT of the original image
-    # passes true.
+    # Query param: when keep_segments=true, updates working_image without clearing segments.
     keep_segments: bool = False,
     session: SessionState = Depends(get_session),
 ) -> None:

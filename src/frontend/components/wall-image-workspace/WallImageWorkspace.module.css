@@ -598,21 +598,9 @@
   pointer-events: none;
 }
 
-/* Outline only, no fill and no filter -- mock holds are often much larger
-   than a real hold (see conversation notes on MockHoldDetector), so a
-   translucent fill washed a visible tint of the route's color across
-   large parts of the actual photo (fixed by dropping the fill).
-   `filter: drop-shadow` for a glow was fixed *too*, separately -- SVG
-   drop-shadow forces the browser to re-rasterize a blurred region every
-   frame for every polygon it's on, and with up to ~20 large holds per
-   route animating in/out (the leave animation has no stagger -- they all
-   animate at once), that was the actual remaining cause of the page
-   visibly stuttering/blinking on route switches, distinct from the
-   reflow issue fixed earlier. With no fill and no filter, each polygon
-   only ever animates opacity/transform, which the browser can composite
-   on the GPU without repainting anything underneath -- the route card's
-   own glow (a small, single, non-animating-shape box-shadow) is a much
-   cheaper place to keep that "neon" look. */
+/* Outline only: no fill and no drop-shadow filter. Animating opacity and
+   stroke without raster filters allows the browser to composite on the GPU
+   without repainting the underlying image during transitions. */
 .highlightOverlay polygon {
   fill: none;
   stroke: var(--route-highlight);
@@ -728,9 +716,8 @@
     border-left: none;
   }
 
-  /* Side by side is too cramped at this width for text like "Select route
-     model" -- falls back to stacked here, same as it was before this was
-     asked for a wider row layout. */
+  /* Stack dropdowns vertically on narrow viewports where side-by-side
+     layout causes text clipping. */
   .modelSelectRow {
     flex-direction: column;
   }

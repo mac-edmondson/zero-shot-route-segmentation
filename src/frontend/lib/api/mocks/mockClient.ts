@@ -13,11 +13,8 @@ import type {
 import { ApiError } from "../types";
 
 /**
- * Same randomized mock-polygon approach as the real backend's mock
- * (src/backend/services/mock_segmentation.py) -- a small irregular blob
- * around the clicked point, randomized per point rather than one fixed
- * shape stamped everywhere -- so mock and real (mock-backed) modes look the
- * same.
+ * Generates randomized irregular polygons around clicked points for mock
+ * hold detection.
  */
 const MOCK_POLYGON_MIN_SIDES = 6;
 const MOCK_POLYGON_MAX_SIDES = 10;
@@ -47,11 +44,9 @@ function mockPolygonAround(point: Coordinate): Coordinate[] {
 }
 
 /**
- * In-memory stand-in for the Dashboard Backend
- * (docs/spec/pipeline/interfaces/dashboard-backend.md) so the frontend is
- * fully clickable before the Python backend exists. Swap this out for
- * {@link restApiClient} (see ../endpoints.ts) by setting
- * `NEXT_PUBLIC_USE_MOCK_API=false`.
+ * In-memory mock implementation of {@link RouteDetectionApiClient}
+ * for frontend development and testing. Set `NEXT_PUBLIC_USE_MOCK_API=false`
+ * to use {@link restApiClient}.
  */
 
 const MOCK_LATENCY_MS = 220;

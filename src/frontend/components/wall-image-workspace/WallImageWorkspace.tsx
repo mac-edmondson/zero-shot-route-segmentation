@@ -149,33 +149,17 @@ function useFlipSlide(
 }
 
 /**
- * The ROUTNet landing page (Project stuff/UI_page_1.png): pick or capture a
- * wall image, mark hold segments, adjust lighting/chalk, then run
- * recognition on it -- all as phases of this one component/page, never a
- * route change. That's deliberate, not an oversight: recognition needs the
- * augmented image to keep showing in exactly the same spot, at exactly the
- * same size, with no reload -- which a page navigation (even client-side)
- * can't guarantee, since it unmounts/remounts the tree. ImageCanvas is
- * mounted exactly once, for this component's whole lifetime; only its
- * props (and the side panel next to it) change as the phase advances.
- * Talks only to `apiClient` (`@/lib/api`), which is backed by an in-memory
- * mock until the real backend (docs/spec/pipeline/interfaces/dashboard-backend.md)
- * exists.
+ * The ROUTNet landing page: pick or capture a wall image, mark hold segments,
+ * adjust lighting/chalk, then run recognition on it -- all as phases of
+ * this one component/page. ImageCanvas is mounted once for this component's
+ * lifetime; only its props and the side panel change as the phase advances.
  */
 export function WallImageWorkspace() {
   const [imageId, setImageId] = useState<string | null>(null);
   const [imageSrc, setImageSrc] = useState<string | null>(null);
-  // The true pre-augmentation upload, kept aside so handleBackToAugment can
-  // restore it -- `imageSrc` itself gets overwritten with the real
-  // *augmented* image once Finish Augment lands (see handleFinishAugment),
-  // which is correct while looking at Recognition, but going back to edit
-  // needs the original back underneath: ImageCanvas's live lighting/chalk/
-  // color preview overlays are computed as if `imageSrc` were still the
-  // unaugmented base, so previewing again on top of the already-baked
-  // result would double the effect (and the slider could never visually
-  // get back to "no change" -- exactly the bug this fixes -- since 50%
-  // stops meaning "identical to what's showing" the moment what's showing
-  // is the augmented image instead of the original one).
+  // Pre-augmentation image source preserved for handleBackToAugment to restore
+  // when returning to the augmentation editor, preventing double-application
+  // of live preview overlays on top of already-baked augmentations.
   const originalImageSrcRef = useRef<string | null>(null);
   const [segments, setSegments] = useState<Segment[]>([]);
   /** Points clicked but not yet sent for detection. */
@@ -543,10 +527,8 @@ export function WallImageWorkspace() {
   const routes = useMemo(() => recognitionResult?.routes ?? [], [recognitionResult]);
 
   // Bottom-first per route: normalized y grows downward, so the largest y
-  // is the lowest hold on the image -- "the bottom hold should appear on
-  // the image 1st", per how this was asked for. Also determines the
-  // "Hold 1"/"Hold 2"/... numbering in the per-route hold buttons, so
-  // "Hold 1" is always the one that reveals first.
+  // is the lowest hold on the image. This determines the reveal order
+  // and "Hold 1"/"Hold 2"/... numbering in the per-route buttons.
   const holdsByRoute = useMemo(() => {
     const map = new Map<number, Hold[]>();
     for (const route of routes) {
@@ -614,20 +596,8 @@ export function WallImageWorkspace() {
     [routeHighlightPhase, selectedRouteId, holdsByRoute],
   );
 
-  // Same issue, same fix as ImageCanvas's polygonPointsById -- Mask-RCNN's
-  // contours are effectively pixel-precise (hundreds to low-thousands of
-  // points per hold), so serializing one into SVG's `points` format is
-  // real work. Left inline in JSX, that work reran for every hold, on
-  // every render of this whole component -- not just the one render where
-  // the highlight actually mounts, but every later one too (hovering a
-  // hold in the list, selecting a different one, anything else in this
-  // fairly large component that triggers a re-render). With a wall that
-  // has enough holds, that recurring cost is exactly what shows up as a
-  // visible stutter/"blink" partway through the staggered reveal below.
-  // Memoized on `visibleHolds` itself (a stable reference from the
-  // memoized holdsByRoute map, unless the route selection actually
-  // changes) so this only redoes the work when the visible set of holds
-  // actually changes.
+  // Memoize serialized SVG points for visible holds to avoid re-serializing
+  // complex hold contours on unrelated re-renders.
   const visibleHoldPoints = useMemo(
     () => visibleHolds.map((hold) => hold.polygon.points.map((p) => `${p.x},${p.y}`).join(" ")),
     [visibleHolds],
@@ -1271,11 +1241,8 @@ export function WallImageWorkspace() {
                   const holdsForRoute = holdsByRoute.get(route.routeId) ?? [];
                   return (
                     <li key={route.routeId}>
-                      {/* A plain div, not a button -- it now wraps the
-                          hold-button row too (nested buttons aren't valid
-                          HTML), so the card's own border/glow visually
-                          contains both, per how this was asked for
-                          ("under the route card, not outside it"). */}
+                      {/* Plain div wrapping the route card and its hold-button
+                          row so the card border and glow contain both elements. */}
                       <div
                         className={`${styles.routeCard} ${isSelected ? styles.routeCardSelected : ""}`}
                         style={
@@ -1304,13 +1271,8 @@ export function WallImageWorkspace() {
                           </span>
                         </button>
 
-                        {/* Always mounted (not `isSelected &&`), just
-                            collapsed via CSS -- switching which route is
-                            selected used to unmount one card's row and
-                            mount another's in the same instant, reflowing
-                            every card in between at once (visible as a
-                            page-wide "blink"). Height-animating a row
-                            that's always there avoids that. */}
+                        {/* Always mounted and collapsed via CSS transitions to prevent
+                            layout reflow and blinking when toggling route selection. */}
                         <div
                           className={`${styles.holdButtonRow} ${isSelected ? styles.holdButtonRowExpanded : ""}`}
                           aria-hidden={!isSelected}

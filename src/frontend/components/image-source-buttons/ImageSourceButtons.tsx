@@ -13,7 +13,7 @@ interface ImageSourceButtonsProps {
   onOpenGallery: () => void;
 }
 
-/** "Upload" / "Gallery" / "Webcam" source pickers from the ROUTNet wireframe. */
+/** "Upload" / "Gallery" / "Webcam" source picker buttons. */
 export function ImageSourceButtons({
   webcamActive,
   disabled = false,

@@ -68,11 +68,8 @@ const POLL_TIMEOUT_MS = 60_000;
 const INFERENCE_POLL_INTERVAL_MS = 3_000;
 
 /**
- * Segmentation, augmentation, and inference all run as background jobs on
- * the backend now (see routes.py) -- the request that starts one returns
- * immediately (202), and the actual result only shows up once a follow-up
- * GET reports something other than "processing". This polls `fetchStatus`
- * on an interval until that happens, or `POLL_TIMEOUT_MS` runs out.
+ * Polls an asynchronous backend job endpoint on an interval until the
+ * status changes from "processing" to completed/failed or times out.
  */
 async function pollUntilSettled<T extends { status: JobStatus }>(
   fetchStatus: () => Promise<T>,

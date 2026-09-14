@@ -180,12 +180,8 @@
   animation: travel 3.4s var(--ease) infinite;
 }
 
-/* The real (non-loop) logo's own spark -- restored here after an editing
-   mistake dropped it entirely while route-loop-spark below was being split
-   out as its own separate keyframes. Untouched by any of the loop work:
-   still exactly what it was tuned to (starts 10% along the path, no
-   fade-out at the end -- a hard cut back to invisible/10% when the
-   animation loops instead). */
+/* Default logo spark animation keyframes: travels along the route line
+   starting at 10% path offset with a looping cycle. */
 @keyframes travel {
   0% {
     offset-distance: 10%;

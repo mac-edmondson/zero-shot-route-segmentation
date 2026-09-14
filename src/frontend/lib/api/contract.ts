@@ -38,12 +38,11 @@ export interface RouteDetectionApiClient {
   setWorkingImage(file: File | Blob, options?: { keepSegments?: boolean }): Promise<void>;
 
   /**
-   * Submits every clicked point to `POST /image/working/segment`, then
-   * polls `GET /image/working/segment` until the backend (a mock stand-in
-   * for SAM3) finishes segmenting -- or fails -- and returns one polygon
-   * per point, in the same order as `coordinates`. Only the points are
-   * sent; the working image itself was already uploaded via
-   * `setWorkingImage`.
+   * Submits clicked points to `POST /image/working/segment`, then
+   * polls `GET /image/working/segment` until segmentation completes -- or
+   * fails -- and returns one polygon per point, in the same order as
+   * `coordinates`. Only the points are sent; the working image itself
+   * was already uploaded via `setWorkingImage`.
    */
   detectWorkingSegments(coordinates: Coordinate[]): Promise<Segment[]>;
   deleteWorkingSegment(segmentId: string): Promise<void>;

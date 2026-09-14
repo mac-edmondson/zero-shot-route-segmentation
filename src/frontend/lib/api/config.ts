@@ -1,16 +1,14 @@
 /**
- * Base URL for the Dashboard Backend API
- * (docs/spec/pipeline/interfaces/dashboard-backend.md). Override via
- * `NEXT_PUBLIC_API_BASE_URL` in `.env.local` once a real backend exists.
+ * Base URL for the Dashboard Backend API. Override via
+ * `NEXT_PUBLIC_API_BASE_URL` in `.env.local`.
  */
 export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
 /**
- * The Python backend doesn't exist yet (see docs/spec/pipeline/README.md),
- * so default to an in-memory mock client so the UI is fully usable end to
- * end. Set `NEXT_PUBLIC_USE_MOCK_API=false` once `NEXT_PUBLIC_API_BASE_URL`
- * points at a real backend.
+ * Configures whether to use the in-memory mock client.
+ * Defaults to true for standalone UI development without backend services.
+ * Set `NEXT_PUBLIC_USE_MOCK_API=false` to use the real backend.
  */
 export const USE_MOCK_API =
   (process.env.NEXT_PUBLIC_USE_MOCK_API ?? "true") !== "false";

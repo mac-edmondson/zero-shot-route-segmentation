@@ -1,12 +1,7 @@
 fastapi>=0.115
 uvicorn>=0.30
 python-multipart>=0.0.9
-# Needed by src/pipeline's mock hold-detector/route-discriminator + shared
-# data models (POST /pipeline/infer/working) -- lightweight compared to the
-# torch/transformers/cv2/pycocotools the *real* SAM3 detector needs, which
-# stay out of this file on purpose (see the `base` vs `production` Docker
-
-# build stages).
+# Pipeline dependencies and image processing
 numpy>=1.26
 pillow>=10.0
 opencv-python-headless>=5.0.0.93
@@ -14,5 +9,5 @@ hdbscan
 scikit-learn>=1.4
 transformers==5.15.0
 
-# Needed for the YOLOv8 hold detector. (This is only for the base build for docker, for production builds it is already present in .toml file.)
+# Needed for YOLOv8 hold detector in base Docker build
 ultralytics==8.4.126
