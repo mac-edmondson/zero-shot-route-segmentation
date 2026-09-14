@@ -2,6 +2,7 @@ import numpy as np
 import torch
 from PIL import Image, ImageDraw
 
+from pipeline.evaluation.gpu_runner import _load_feature_maps
 from pipeline.evaluation.metrics import pairwise_hold_iou, polygon_iou
 from pipeline.evaluation.run_all_eval import predict_records
 from pipeline.interfaces.data_models import Coordinate, Hold, ImageRecord, Polygon
@@ -82,3 +83,34 @@ def test_dino_clustering_uses_precomputed_embeddings_without_model(monkeypatch):
     )
     routes = discriminator.get_routes([image], [holds])
     assert sum(len(route.holds) for route in routes[0]) == 2
+
+
+def test_detector_feature_cache_is_aligned_to_matched_route_holds(tmp_path):
+    image = Image.new("RGB", (20, 20))
+    record = ImageRecord(
+        "image",
+        image,
+        (hold(1, 1, 5, 5), hold(10, 10, 15, 15, route_id=1)),
+    )
+    feature_path = tmp_path / "artifacts" / "clean" / "route_features.pt"
+    feature_path.parent.mkdir(parents=True)
+    vectors = torch.tensor([[1.0, 2.0], [3.0, 4.0]])
+    torch.save(
+        {
+            "embeddings": {
+                "yolo": {
+                    "weighted": {"image": vectors},
+                    "mean": {"image": vectors},
+                }
+            },
+            "lab": {"yolo": {"image": vectors}},
+            "rgb": {"yolo": {"image": vectors}},
+        },
+        feature_path,
+    )
+
+    embeddings, lab, rgb = _load_feature_maps(tmp_path, [record], "yolo", "clean")
+
+    assert embeddings[(id(image), "weighted")].tolist() == [[3.0, 4.0]]
+    assert lab[id(image)].tolist() == [[3.0, 4.0]]
+    assert rgb[id(image)].tolist() == [[3.0, 4.0]]

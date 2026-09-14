@@ -196,6 +196,7 @@ MATRIX_ROUTE_SPECS = (
     ComponentSpec("DINO Learning", {"pooling": "mean"}),
     ComponentSpec("Ground Truth", {}),
     ComponentSpec("Mock", {"seed": 12345}),
+    ComponentSpec("Color Only", {"n_clusters": 6, "color_space": "lab"}),
 )
 
 

@@ -269,12 +269,22 @@ def _load_feature_maps(
     )
     embeddings, lab, rgb = {}, {}, {}
     for record in condition_records:
+        selection = (
+            slice(None)
+            if source == "ground_truth"
+            else [
+                index
+                for index, hold in enumerate(record.annotations)
+                if hold.attributes.get("hold_type") != "volume"
+                and isinstance(hold.attributes.get("route_id"), int)
+            ]
+        )
         for pooling in ("weighted", "mean"):
             embeddings[(id(record.image), pooling)] = data["embeddings"][source][
                 pooling
-            ][record.image_id]
-        lab[id(record.image)] = data["lab"][source][record.image_id].numpy()
-        rgb[id(record.image)] = data["rgb"][source][record.image_id].numpy()
+            ][record.image_id][selection]
+        lab[id(record.image)] = data["lab"][source][record.image_id][selection].numpy()
+        rgb[id(record.image)] = data["rgb"][source][record.image_id][selection].numpy()
     return embeddings, lab, rgb
 
 
@@ -299,7 +309,9 @@ def _route_discriminator(
     if spec.name in {"DINO Clustering", "DINO Learning"}:
         config.update(precomputed_embeddings=embeddings, precomputed_colours=lab)
     elif spec.name == "Color Only":
-        config["precomputed_features"] = rgb
+        config["precomputed_features"] = (
+            lab if spec.config.get("color_space") == "lab" else rgb
+        )
     return route_discriminator_factory(spec.name, config)
 
 
@@ -389,6 +401,7 @@ def consolidate_stage(root: Path, arm: str) -> dict[str, Any]:
         root / arm / "matrix" / f"{key}__{_slug(spec)}.json"
         for key in DETECTOR_KEYS
         for spec in MATRIX_ROUTE_SPECS
+        if key != "sam_text" or spec.config.get("color_space") != "lab"
     ]
     routes = [
         root / arm / "independent" / "routes" / f"{_slug(spec)}.json"
@@ -506,12 +519,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--root", type=Path, default=Path("results/gpu_fast"))
     args = parser.parse_args(argv)
-    result = (
+    _ = (
         smoke_stage(args.root)
         if args.stage == "smoke"
         else _run_indexed(args.stage, args.index, args.root)
     )
-    print(json.dumps(_safe(result), default=str), flush=True)
+    print(
+        json.dumps({"stage": args.stage, "index": args.index, "status": "completed"}),
+        flush=True,
+    )
     return 0
 
 
