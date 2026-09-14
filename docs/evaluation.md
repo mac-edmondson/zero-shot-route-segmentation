@@ -1,90 +1,177 @@
-# SAM3 Hold-Detection Evaluation
+# Evaluation Suite
 
-## Retained evaluation data
+This document describes the evaluation pipeline implemented under
+`src/pipeline/evaluation/`. It evaluates detector-to-route combinations, keeps clean and distorted conditions separate,
+and writes machine-readable results for tables, plots, and error analysis.
 
-- `data/evaluation/images/`: nine 2800×1864 wall images (`0000.jpg`–`0008.jpg`) and `bh-annotation.csv`, a VIA polygon annotation file.
-- `data/evaluation/exemplars/`: five clean single-hold exemplar image/mask pairs.
+## Pipeline overview
 
-The CSV labels `hold` and `volume`; the quantitative evaluation scores `hold` only, treating volumes as false positives.
+The benchmark flow is:
 
-## Environment
+1. Load Roboflow COCO annotations and source images.
+2. Convert each image into the shared `ImageRecord` model.
+3. Normalize Roboflow route labels into `Hold.attributes["route_id"]`.
+4. Run configured hold detectors.
+5. Match detector predictions to annotations at IoU 0.50 and transfer route IDs.
+6. Run every configured route discriminator on the matched detector predictions.
+7. Serialize one JSON artifact per combination plus a manifest.
 
-Experiments used the local SAM3 video model at `models/sam3` in the `lit` Conda environment on one NVIDIA A40 GPU. The final multi-exemplar job ran on A40 node `a0127` and completed in 2m42s.
+The matrix evaluates genuine detector-to-route combinations. The existing
+`evaluate_route_discriminator()` API remains available for isolated grouping
+quality checks using annotated holds directly.
 
-## Completed evaluation
+## Data loading
 
-### Qualitative text and single-exemplar prompt sweep
+`src/pipeline/utility/ground_truth_loader.py` loads the restructured Roboflow
+COCO export. It reads image entries and polygon segmentations and returns holds
+grouped in COCO image order.
 
-All nine images were run with five text prompts. Detected polygon counts were:
+`run_all_eval.py` searches the supplied dataset root recursively for
+`*_annotations.coco.json` files. It resolves referenced images, loads polygon
+annotations into `Hold` values, preserves route labels, converts labels such as
+`route_3` to numeric route IDs, and excludes unknown route labels from route
+ground truth. Files under `distorted` or `augmented` directories are marked as
+distorted.
 
-| Prompt | Text only | Text + one exemplar |
-| --- | ---: | ---: |
-| `Climbings Holds` | 0 | 5 |
-| `colored climbing holds` | 3 | 5 |
-| `Climbing holds on the wall` | 3 | 5 |
-| `All the climbing holds on the wall` | 2 | 5 |
-| `all Bouldering holds on the wall` | 2 | 5 |
+Expected input layout:
 
-Text-only inference was about 0.70–0.76 seconds per image after model loading; text plus one exemplar was about 1.23–1.26 seconds. The exemplar counts were identical across the tested prompt wordings.
+```text
+data/roboflow/
+  train/images/ *_annotations.coco.json
+  valid/images/ *_annotations.coco.json
+  test/images/  *_annotations.coco.json
+```
 
-### Quantitative 3-versus-5 exemplar comparison
+The runner selects the requested split, defaulting to `test`.
 
-The final prompt was `colored climbing holds`. A longer candidate prompt exceeded SAM3's 32-token text limit and must not be used unchanged. The first three exemplar pairs were compared with all five pairs using the same nine images.
+## Hold detector evaluation
 
-| Exemplars | Detections | TP | FP | FN | Recall | Precision | F1 | Mean matched IoU |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 3 | 19 | 2 | 17 | 387 | 0.005 | 0.105 | 0.010 | 0.844 |
-| 5 | 29 | 3 | 26 | 386 | 0.008 | 0.103 | 0.014 | 0.812 |
+`evaluate_hold_detector()` accepts any implementation satisfying the shared
+`HoldDetector` protocol. Current factory options include Mask R-CNN, YOLOv8,
+SAM3, and Mock; future detectors use the same interface.
 
-A match uses one-to-one mask IoU ≥0.50. Evaluation used recall-first proposal filtering (minimum confidence 0.05, minimum area 4 pixels, maximum area 25% of image, maximum aspect ratio 50, minimum fill ratio 0.005) and duplicate NMS at IoU 0.85. Five exemplars were **not** a meaningful improvement under the predefined rule: recall needed to rise by at least 3 percentage points with no more than a 1-point F1 loss; observed recall gain was 0.3 points.
+Ground truth excludes annotations with `hold_type == "volume"`. Volume
+predictions remain predictions and count as false positives.
 
-SAM3 reported that the optional `kernels` package was unavailable, so its internal NMS, hole filling, and sprinkle removal were skipped during this run.
+The evaluator reports COCO-style AP at IoU thresholds `0.50, 0.55, ..., 0.95`:
 
-For current pipeline API usage, see [updates.md](updates.md).
+- `AP50` and `AP75`;
+- AP for every configured threshold;
+- `mAP`, averaged over configured thresholds;
+- prediction and ground-truth counts;
+- mean inference time.
 
-## Color-specific prompt sweep
+Predictions are ranked by `Hold.attributes["confidence"]`. Missing confidence
+uses a recorded fallback of `1.0`. A valid binary `attributes["mask"]` is used
+for geometry when available; polygon rasterization is the fallback.
 
-Ten independent A40 jobs ran the same nine images with five prompts: `red climbing holds`, `blue climbing holds`, `green climbing holds`, `yellow climbing holds`, and `orange climbing holds`. For each prompt, one text-only arm and one text-plus-the-fixed-five-exemplar arm were run. Jobs `4034185`–`4034194` all completed successfully. This is a qualitative count-and-timing sweep; no VIA annotation metrics were computed.
+## Route-discriminator evaluation
 
-| Prompt | Text-only detections | Text-only s/image | Five-exemplar detections | Five-exemplar s/image |
-| --- | ---: | ---: | ---: | ---: |
-| `red climbing holds` | 0 | 0.837 | 31 | 5.676 |
-| `blue climbing holds` | 1 | 0.856 | 31 | 5.686 |
-| `green climbing holds` | 1 | 0.856 | 31 | 5.682 |
-| `yellow climbing holds` | 2 | 0.856 | 31 | 5.405 |
-| `orange climbing holds` | 2 | 0.607 | 31 | 5.391 |
+`evaluate_route_discriminator()` accepts any implementation satisfying the
+shared `RouteDiscriminator` protocol, including Triplet MLP, DINO clustering,
+DINO learning, and future CIELAB/DINOv3 implementations.
 
-Text-only detections occurred only in `0003.jpg`: 0 for red, 1 for blue and green, and 2 for yellow and orange. Every five-exemplar arm produced the same per-image counts: `0000` 3, `0001` 4, `0002` 3, `0003` 4, `0004` 1, `0005` 4, `0006` 5, `0007` 3, and `0008` 4. Thus, for this fixed exemplar set, color wording did not change the five-exemplar result. Raw job scripts, logs, and CSV/JSON summaries are intentionally temporary under `tmp/color_prompt_sweep/`.
+The evaluator supplies ground-truth holds directly. Ground-truth routes are
+formed from numeric `route_id` values; volumes and unknown/unlabelled holds are
+excluded.
 
-## Mask R-CNN + TripletNet Kaggle inference validation
+Reported metrics include pairwise precision, recall, and F1 for same-route hold
+pairs, cluster purity, adjusted Rand index, normalized mutual information,
+route counts, and mean inference time.
 
-This is an inference-health validation, not an accuracy or original-pipeline-equivalence evaluation.
+## Independent evaluation
 
-- Dataset: tomasslama/indoor-climbing-gym-hold-segmentation, version 4, downloaded with KaggleHub under root tmp/.
-- Inputs: the first 15 sorted JPEGs in bh-phone (000.jpg through 014.jpg).
-- Compute: A40 Slurm job 4043742 on a0225 with CUDA available; Detectron2 runtime dependencies were installed under tmp/ only.
-- Model loading: Mask R-CNN loaded in 21.027 s; TripletNet loaded in 1.673 s. The initial ImageNet ResNet-50 backbone download was retained under tmp/.
+Use `--independent` to produce detector-only and route-only reports. Detectors
+are evaluated against the annotated holds in the evaluation set. Route
+discriminators receive those annotated holds directly, so their scores measure
+route grouping without detector recall or localization affecting the result.
+Reports are written to `results/independent/detectors.json` and
+`results/independent/route_discriminators.json`.
 
-| Measure | Result |
-| --- | ---: |
-| Images completed | 15 / 15 |
-| Holds | 1,490 (99–100/image) |
-| Routes | 151 (8–13/image) |
-| Mask R-CNN mean inference | 1.059 s/image |
-| Mask R-CNN steady-state mean | 0.866 s/image |
+## Detector-to-route matrix
 
-## Original Mask R-CNN reference comparison
+`run_evaluation_matrix()` runs Mask R-CNN, YOLOv8, and SAM3 against the
+registered route discriminators. Detector predictions are inferred once per
+image, matched to unused annotated holds at IoU `0.50`, and passed to every
+route discriminator. Unmatched predictions are retained for detector metrics
+but excluded from route metrics.
 
-The original Indoor Climbing Hold and Route Segmentation repository was cloned
-temporarily at commit `27ba65fcc2982e6d01e7556f1882df72e5fb1f46`. It contains
-the original Detectron2 `DefaultPredictor` integration but no published model
-artifacts, so both sides deliberately used this repository's identical local
-`experiment_config.yml` and `model_final.pth`.
+The default matrix includes Triplet MLP, Color Only, Ground Truth and Mock
+baselines, DINO clustering with HDBSCAN/DBSCAN/agglomerative methods with
+`color_weight` 0.0 and 1.0, and learned DINO with weighted and mean pooling.
+Each combination is saved separately and indexed by `manifest.json`.
 
-On the first 15 sorted Kaggle `bh-phone` images, A40 job `4043861` (node
-`a0324`) compared hold-class output from the original `DefaultPredictor` with
-`MaskRCNNHoldDetector`. Results were exact: all 15 image-level hold counts
-matched, every ordered binary mask had IoU `1.0`, and the maximum absolute
-confidence difference was `0.0`.
+## Results and execution
 
-The initial failed comparison revealed that the adapter omitted Detectron2's
+Each run produces an `EvaluationReport` with run identity, dataset metadata,
+implementation configuration, per-image cases, aggregate metrics, and separate
+clean/distorted blocks. Cases are `evaluated`, `unevaluable`, or `error`.
+Reports are JSON-safe; detector masks are represented by availability and shape
+metadata. `metric_rows(report)` produces flat records for tables and plots.
+
+## Metric reference
+
+For quality metrics, higher is better unless noted otherwise.
+
+### Hold detection metrics
+
+| Metric | Direction | Meaning and calculation |
+|---|---|---|
+| Precision | Higher | Correct detections divided by all detections: `TP / (TP + FP)`. It measures how many predictions are correct. |
+| Recall | Higher | Correct detections divided by all labelled holds: `TP / (TP + FN)`. It measures how many holds were found. |
+| F1 | Higher | Harmonic mean of precision and recall: `2PR / (P + R)`. It balances missed holds and false detections. |
+| AP50 | Higher | Average precision at IoU threshold `0.50`, using confidence-ranked predictions. |
+| AP75 | Higher | Average precision at the stricter IoU threshold `0.75`. |
+| AP50–AP95 | Higher | Average precision at each IoU threshold from `0.50` to `0.95` in steps of `0.05`. |
+| mAP | Higher | Mean of AP across all configured IoU thresholds. This is the primary overall detector score. |
+| Mean matched IoU | Higher | Average intersection-over-union of matched prediction/ground-truth shapes. `IoU = intersection / union`. |
+| Prediction count | Context only | Number of holds returned by the detector; it is not a quality score by itself. |
+| Ground-truth count | Context only | Number of labelled positive holds used for scoring. |
+| Mean inference time | Lower | Average seconds required to process one image. |
+
+`TP` is a true positive, `FP` is a false positive, and `FN` is a missed ground
+truth hold. AP additionally uses confidence ranking, so it evaluates the quality
+of the detector across score cutoffs rather than at only one threshold.
+
+### Route-discriminator metrics
+
+These metrics evaluate grouping using the same ground-truth holds as input; hold
+detection quality is therefore excluded.
+
+| Metric | Direction | Meaning and calculation |
+|---|---|---|
+| Pairwise precision | Higher | Of all hold pairs placed in the same predicted route, the fraction that belong to the same true route. |
+| Pairwise recall | Higher | Of all hold pairs that belong to the same true route, the fraction grouped together by the discriminator. |
+| Pairwise F1 | Higher | Harmonic mean of pairwise precision and recall; the primary route-grouping balance score. |
+| Purity | Higher | For each predicted route, the fraction belonging to its most common true route, averaged over holds. `1.0` is perfectly pure. |
+| Adjusted Rand Index (ARI) | Higher | Agreement between predicted and true pair assignments, adjusted for agreement expected by chance. `1.0` is perfect; `0` is chance-level; it can be negative when worse than chance. |
+| Normalized Mutual Information (NMI) | Higher | Shared information between predicted and true route labels, normalized to a comparable scale. `1.0` is perfect and `0` means no shared information. |
+| Predicted route count | Context only | Number of route groups produced by the discriminator. It should be interpreted alongside the ground-truth route count. |
+| Ground-truth route count | Context only | Number of labelled routes available in the image. |
+| Mean inference time | Lower | Average seconds required to group the holds for one image. |
+
+For all metrics, compare models on the same images, annotations, condition, and
+configuration. A high count or low runtime alone does not imply better model
+quality.
+
+Run the configured suite with:
+
+```bash
+PYTHONPATH=src python -m pipeline.evaluation.run_all_eval \
+  --dataset-root data/roboflow \
+  --split test \
+  --output results/evaluation_matrix/manifest.json
+```
+
+Defaults are `Mask-RCNN`, `YOLO`, and `SAM 3`, plus `Triplet MLP`, `DINO
+Clustering`, and `DINO Learning`. Repeat `--detector` or
+`--route-discriminator` to replace the defaults. Successful reports and
+component construction/evaluation errors are retained together.
+
+## Current status
+
+The result contract, metric utilities, hold detector evaluator, route
+discriminator evaluator, Roboflow loader integration, and consolidated runner
+are implemented. Regression tests, smoke tests, compilation, and Ruff checks
+pass. A full Roboflow benchmark artifact requires the dataset, model weights,
+and optional runtime dependencies.

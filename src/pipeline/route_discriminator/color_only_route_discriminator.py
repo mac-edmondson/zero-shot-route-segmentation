@@ -6,6 +6,28 @@ from ..interfaces.data_models import Route
 from ..interfaces.errors import BatchAlignmentError
 
 
+def _kmeans(
+    features: np.ndarray, n_clusters: int, random_state: int | None
+) -> np.ndarray:
+    """Return deterministic k-means labels without an additional dependency."""
+    rng = np.random.default_rng(random_state)
+    centers = features[rng.choice(len(features), n_clusters, replace=False)]
+    for _ in range(100):
+        labels = ((features[:, None] - centers) ** 2).sum(2).argmin(1)
+        updated = np.array(
+            [
+                features[labels == index].mean(0)
+                if np.any(labels == index)
+                else centers[index]
+                for index in range(n_clusters)
+            ]
+        )
+        if np.allclose(updated, centers):
+            break
+        centers = updated
+    return labels
+
+
 class ColorOnlyRouteDiscriminator:
     implementation_id = "color_only_discriminator"
 
@@ -14,23 +36,29 @@ class ColorOnlyRouteDiscriminator:
         n_clusters: int,
         clustering_method="kmeans",
         random_state: int | None = 0,
+        color_space="rgb",
         **config,
     ):
         if not isinstance(n_clusters, int) or n_clusters <= 0:
             raise ValueError("n_clusters must be positive.")
         if clustering_method != "kmeans":
             raise ValueError("Only kmeans is supported.")
-        self.n_clusters, self.clustering_method, self.random_state = (
+        if color_space not in {"rgb", "lab"}:
+            raise ValueError("color_space must be 'rgb' or 'lab'.")
+        self.n_clusters, self.clustering_method, self.color_space, self.random_state = (
             n_clusters,
             clustering_method,
+            color_space,
             random_state,
         )
 
     @property
     def configuration(self):
+        """ " color_space must be configured 'rgb' or 'lab' to use either of them."""
         return {
             "n_clusters": self.n_clusters,
             "clustering_method": self.clustering_method,
+            "color_space": self.color_space,
             "random_state": self.random_state,
         }
 
@@ -44,7 +72,7 @@ class ColorOnlyRouteDiscriminator:
                 continue
             features = np.array([self._color(image, h) for h in batch])
             k = min(self.n_clusters, len(batch))
-            labels = self._kmeans(features, k)
+            labels = _kmeans(features, k, self.random_state)
             groups = {}
             for h, label in zip(batch, labels):
                 groups.setdefault(int(label), set()).add(h)
@@ -53,27 +81,13 @@ class ColorOnlyRouteDiscriminator:
 
     def _color(self, image, hold):
         a = np.asarray(image.convert("RGB"))
+        if self.color_space == "lab":
+            a = cv2.cvtColor(a, cv2.COLOR_RGB2LAB)
         m = np.zeros(a.shape[:2], np.uint8)
         cv2.fillPoly(
             m, [np.array([(p.x, p.y) for p in hold.polygon.points], np.int32)], 1
         )
         return a[m.astype(bool)].mean(0)
-
-    def _kmeans(self, x, k):
-        rng = np.random.default_rng(self.random_state)
-        centers = x[rng.choice(len(x), k, replace=False)]
-        for _ in range(100):
-            labels = ((x[:, None] - centers) ** 2).sum(2).argmin(1)
-            new = np.array(
-                [
-                    x[labels == i].mean(0) if np.any(labels == i) else centers[i]
-                    for i in range(k)
-                ]
-            )
-            if np.allclose(new, centers):
-                break
-            centers = new
-        return labels
 
     @staticmethod
     def mark_routes(images, routes):

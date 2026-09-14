@@ -43,6 +43,8 @@ ENV TORCH_HOME=/opt/torch-cache
 
 
 COPY src ./src
+# TODO: Bindmount or specifically copy only needed data.
+COPY data ./data
 
 # VOLUME /app/models # A volume must be bind-mounted into this image to work!
 

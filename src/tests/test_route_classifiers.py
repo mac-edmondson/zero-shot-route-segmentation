@@ -1,4 +1,6 @@
 import pytest
+import cv2
+import numpy as np
 from PIL import Image, ImageDraw
 
 from pipeline.interfaces.data_models import Coordinate, Hold, Polygon
@@ -33,3 +35,19 @@ def test_color_discriminator_validates_batch_alignment():
         discriminator.get_routes([Image.new("RGB", (1, 1))], [])
     with pytest.raises(BatchAlignmentError):
         discriminator.mark_routes([Image.new("RGB", (1, 1))], [])
+
+
+def test_color_discriminator_supports_lab_color_space():
+    image = Image.new("RGB", (10, 10), (255, 0, 0))
+    discriminator = ColorOnlyRouteDiscriminator(n_clusters=1, color_space="lab")
+
+    features = discriminator._color(image, holds()[0])
+
+    expected = cv2.cvtColor(np.uint8([[[255, 0, 0]]]), cv2.COLOR_RGB2LAB)[0, 0]
+    assert np.array_equal(features, expected)
+    assert discriminator.configuration["color_space"] == "lab"
+
+
+def test_color_discriminator_rejects_unknown_color_space():
+    with pytest.raises(ValueError, match="color_space"):
+        ColorOnlyRouteDiscriminator(n_clusters=1, color_space="hsv")
