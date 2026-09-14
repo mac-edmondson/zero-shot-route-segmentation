@@ -56,23 +56,46 @@ The evaluation suite benchmarks hold detection accuracy (mAP, Precision, Recall)
 ### Reproducing Benchmarks
 
 ```bash
-# Independent component evaluation (Detector mAP & Route Discriminator clustering on GT holds)
-PYTHONPATH=src uv run python -m pipeline.evaluation.run_all_eval \
+# Independent component evaluation:
+# detector mAP and route discrimination using ground-truth holds
+PYTHONPATH=src python -m pipeline.evaluation.run_all_eval \
   --independent \
   --dataset-root data/evaluation/ground_truth_labels \
+  --split test \
   --output-dir results/independent
 
-# Full end-to-end matrix (Detectors paired with Route Discriminators)
-PYTHONPATH=src uv run python -m pipeline.evaluation.run_all_eval \
+# Clean end-to-end matrix:
+# detector predictions paired with every configured route discriminator
+PYTHONPATH=src python -m pipeline.evaluation.run_all_eval \
   --dataset-root data/evaluation/ground_truth_labels \
   --split test \
   --output results/evaluation_matrix/manifest.json
 ```
 
+### Environment Setup
+
+Perform one of the following depending on your system.
+
+#### Using venv
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -e .
+```
+
+#### Using uv
+
+```bash
+uv venv .venv
+source .venv/bin/activate
+uv sync
+```
+
 ### Running Tests
 
 ```bash
-PYTHONPATH=src uv run pytest src/tests
+PYTHONPATH=.:src uv run pytest src/tests
 ```
 
 ## Repository Structure
