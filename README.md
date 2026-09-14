@@ -1,6 +1,6 @@
 # Robust Indoor Climbing Route Recognition
 
-**ROUTNet**: a modular computer-vision pipeline and interactive web demo that finds climbing holds in a photo of a bouldering wall and groups them into routes. It also measures how robust that grouping is to chalk, lighting, and similar-color distortions.
+**ROUTNet** is a modular computer-vision pipeline and interactive web demo that finds climbing holds in a photo of a bouldering wall and groups them into routes. It also measures how robust that grouping is to chalk, lighting, and similar-color distortions.
 
 Joswin Dsouza · Macallyster Edmondson · Praveen Narayan Hegde
 
@@ -8,7 +8,7 @@ Department of Computer Science, UTN (2026)
 
 ---
 
-For detailed methodology, experimental setup, and benchmark evaluation results, refer to [`our report`](report/report.pdf).
+For detailed methodology, experimental setup, and benchmark evaluation results, refer to [our report](report/report.pdf).
 
 ---
 
@@ -48,6 +48,32 @@ docker compose up --build
 Once running, open **<http://localhost:8080>** in your browser.
 
 ---
+
+## Evaluation
+
+The evaluation suite benchmarks hold detection accuracy (mAP, Precision, Recall) and route discrimination clustering quality (Pairwise F1, ARI, NMI) across clean and augmented wall images.
+
+### Reproducing Benchmarks
+
+```bash
+# Independent component evaluation (Detector mAP & Route Discriminator clustering on GT holds)
+PYTHONPATH=src uv run python -m pipeline.evaluation.run_all_eval \
+  --independent \
+  --dataset-root data/evaluation/ground_truth_labels \
+  --output-dir results/independent
+
+# Full end-to-end matrix (Detectors paired with Route Discriminators)
+PYTHONPATH=src uv run python -m pipeline.evaluation.run_all_eval \
+  --dataset-root data/evaluation/ground_truth_labels \
+  --split test \
+  --output results/evaluation_matrix/manifest.json
+```
+
+### Running Tests
+
+```bash
+PYTHONPATH=src uv run pytest src/tests
+```
 
 ## Repository Structure
 
