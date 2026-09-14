@@ -1,4 +1,5 @@
 """Evaluation contracts and pure reporting metrics."""
+
 from .augmented_runner import LIGHTING_ARMS, build_lighting_records, lighting_manifest
 from .hold_detector_evaluator import (
     DEFAULT_IOU_THRESHOLDS,
@@ -10,6 +11,7 @@ from .metrics import (
     HoldMatch,
     hold_metrics,
     match_holds,
+    pairwise_hold_iou,
     polygon_iou,
     route_metrics,
     routes_from_annotations,
@@ -32,4 +34,33 @@ from .run_all_eval import (
     run_independent_evaluations,
 )
 
-__all__ = ["DEFAULT_IOU_THRESHOLDS", "LIGHTING_ARMS", "MATRIX_ROUTE_SPECS", "ComponentSpec", "ConditionEvaluation", "EvaluationCaseResult", "EvaluationReport", "EvaluationStatus", "EvaluationTarget", "HoldMatch", "evaluate_hold_detector", "evaluate_route_discriminator", "hold_metrics", "load_benchmark_records", "build_lighting_records", "lighting_manifest", "match_holds", "metric_rows", "polygon_iou", "report_json", "route_metrics", "routes_from_annotations", "run_all_evaluations", "run_evaluation_matrix", "run_independent_evaluations", "summarize_cases", "write_report"]
+__all__ = [
+    "DEFAULT_IOU_THRESHOLDS",
+    "LIGHTING_ARMS",
+    "MATRIX_ROUTE_SPECS",
+    "ComponentSpec",
+    "ConditionEvaluation",
+    "EvaluationCaseResult",
+    "EvaluationReport",
+    "EvaluationStatus",
+    "EvaluationTarget",
+    "HoldMatch",
+    "build_lighting_records",
+    "evaluate_hold_detector",
+    "evaluate_route_discriminator",
+    "hold_metrics",
+    "lighting_manifest",
+    "load_benchmark_records",
+    "match_holds",
+    "metric_rows",
+    "pairwise_hold_iou",
+    "polygon_iou",
+    "report_json",
+    "route_metrics",
+    "routes_from_annotations",
+    "run_all_evaluations",
+    "run_evaluation_matrix",
+    "run_independent_evaluations",
+    "summarize_cases",
+    "write_report",
+]

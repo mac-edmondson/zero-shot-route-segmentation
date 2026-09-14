@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 
 import numpy as np
 import torch
 
-from ..interfaces.data_models import Image, Route
+from ..interfaces.data_models import Route
 from ..utility.dino_pairwise import DINOPairwiseHead
 from ..utility.dinov3 import DINOv3
 from .dino_clustering_route_discriminator import DINOClusteringRouteDiscriminator
@@ -34,6 +35,8 @@ class DINOLearningRouteDiscriminator(DINOClusteringRouteDiscriminator):
         model_dir: str | Path = "models/dinov3",
         device: str | torch.device | None = None,
         pair_threshold: float = 0.5,
+        precomputed_embeddings: Mapping[tuple[int, str], torch.Tensor] | None = None,
+        precomputed_colours: Mapping[int, np.ndarray] | None = None,
     ) -> None:
         if pooling not in {"weighted", "mean"}:
             raise InvalidRouteDiscriminatorConfigError(
@@ -48,9 +51,17 @@ class DINOLearningRouteDiscriminator(DINOClusteringRouteDiscriminator):
             raise InvalidRouteDiscriminatorConfigError(
                 "pair_threshold must be a number in [0, 1]."
             )
-        DINOv3.__init__(self, model_dir=model_dir, device=device)
-        self.weights_path = Path(weights_path) if weights_path is not None else self._WEIGHTS
+        DINOv3.__init__(
+            self,
+            model_dir=model_dir,
+            device=device,
+            precomputed_embeddings=precomputed_embeddings,
+        )
+        self.weights_path = (
+            Path(weights_path) if weights_path is not None else self._WEIGHTS
+        )
         self.pooling, self.pair_threshold = pooling, float(pair_threshold)
+        self.precomputed_colours = dict(precomputed_colours or {})
         self.head = DINOPairwiseHead().to(self.device)
         self._head_loaded = False
 
@@ -91,9 +102,21 @@ class DINOLearningRouteDiscriminator(DINOClusteringRouteDiscriminator):
             if not image_holds:
                 result.append([])
                 continue
-            masks = [self._hold_mask(image, hold) for hold in image_holds]
-            embeddings = self.extract_mask_embeddings(image, masks, self.pooling)
-            colours = np.stack([self._lab_feature(image, hold) for hold in image_holds])
+            cached = self.precomputed_embeddings.get((id(image), self.pooling))
+            if cached is None:
+                masks = [self._hold_mask(image, hold) for hold in image_holds]
+                embeddings = self.extract_mask_embeddings(image, masks, self.pooling)
+            else:
+                if cached.shape != (len(image_holds), self.HIDDEN_SIZE):
+                    raise ValueError(
+                        "precomputed embedding count does not match holds."
+                    )
+                embeddings = cached.to(self.device)
+            colours = self.precomputed_colours.get(id(image))
+            if colours is None:
+                colours = self._lab_features(image, image_holds)
+            if len(colours) != len(image_holds):
+                raise ValueError("precomputed colour count does not match holds.")
             color_distances = self._ciede2000_distances(colours)
             color_features = torch.as_tensor(
                 np.concatenate(

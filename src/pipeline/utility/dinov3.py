@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, Literal
 
@@ -27,11 +27,13 @@ class DINOv3:
         self,
         model_dir: str | Path = "models/dinov3",
         device: str | torch.device | None = None,
+        precomputed_embeddings: Mapping[tuple[int, str], torch.Tensor] | None = None,
     ) -> None:
         self.model_dir = Path(model_dir)
         self.device = self._resolve_device(device)
         self.model: Any | None = None
         self.processor: Any | None = None
+        self.precomputed_embeddings = dict(precomputed_embeddings or {})
 
     @staticmethod
     def _resolve_device(device: str | torch.device | None) -> torch.device:
@@ -147,10 +149,62 @@ class DINOv3:
         ):
             raise ValueError("every mask must be a PIL image with the image's size.")
 
-        tokens = self.extract_patch_tokens(image)
-        return torch.stack(
-            [self.pool_mask_embedding(tokens, mask, pooling) for mask in masks]
+        cached = self.precomputed_embeddings.get((id(image), pooling))
+        if cached is not None:
+            if cached.shape != (len(masks), self.HIDDEN_SIZE):
+                raise ValueError("precomputed embedding count does not match masks.")
+            return cached.to(self.device)
+        return self.pool_mask_embeddings(
+            self.extract_patch_tokens(image), masks, pooling
         )
+
+    def pool_mask_embeddings(
+        self,
+        patch_tokens: torch.Tensor,
+        masks: Sequence[PILImage.Image],
+        pooling: Literal["weighted", "mean"] = "weighted",
+    ) -> torch.Tensor:
+        """Pool many masks from an already-computed image token tensor."""
+        if not masks:
+            return torch.empty((0, self.HIDDEN_SIZE), device=patch_tokens.device)
+        grid_size = self.IMAGE_SIZE // self.PATCH_SIZE
+        batches = []
+        for start in range(0, len(masks), 32):
+            arrays = np.stack(
+                [
+                    np.asarray(
+                        mask.convert("L").resize(
+                            (self.IMAGE_SIZE, self.IMAGE_SIZE),
+                            PILImage.Resampling.NEAREST,
+                        ),
+                        dtype=np.float32,
+                    )
+                    / 255.0
+                    for mask in masks[start : start + 32]
+                ]
+            )
+            coverage = torch.from_numpy(arrays).to(
+                device=patch_tokens.device, dtype=patch_tokens.dtype
+            )
+            coverage = (
+                coverage.reshape(
+                    -1,
+                    grid_size,
+                    self.PATCH_SIZE,
+                    grid_size,
+                    self.PATCH_SIZE,
+                )
+                .mean(dim=(2, 4))
+                .flatten(1)
+            )
+            weights = coverage if pooling == "weighted" else coverage.gt(0)
+            if torch.any(weights.sum(1) == 0):
+                raise ValueError("masks must contain at least one pixel.")
+            embeddings = (weights.to(patch_tokens.dtype) @ patch_tokens) / weights.sum(
+                1, keepdim=True
+            )
+            batches.append(torch.nn.functional.normalize(embeddings, dim=1))
+        return torch.cat(batches)
 
     def pool_mask_embedding(
         self,

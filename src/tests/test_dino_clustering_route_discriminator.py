@@ -8,7 +8,9 @@ from PIL import Image
 
 from pipeline.interfaces.data_models import Coordinate, Hold, Polygon
 from pipeline.interfaces.errors import BatchAlignmentError, InvalidImageError
-from pipeline.route_discriminator.dino_clustering_route_discriminator import DINOClusteringRouteDiscriminator
+from pipeline.route_discriminator.dino_clustering_route_discriminator import (
+    DINOClusteringRouteDiscriminator,
+)
 from pipeline.route_discriminator.route_discriminator import (
     InvalidRouteDiscriminatorConfigError,
 )
@@ -80,13 +82,17 @@ def test_pooling_modes_and_centroid_fallback_produce_normalized_features(monkeyp
     monkeypatch.setattr(mean, "extract_patch_tokens", lambda _: patch_tokens())
 
     assert torch.linalg.vector_norm(
-        weighted.extract_mask_embeddings(image, [weighted._hold_mask(image, polygon)])[0]
+        weighted.extract_mask_embeddings(image, [weighted._hold_mask(image, polygon)])[
+            0
+        ]
     ) == pytest.approx(1.0)
     assert torch.linalg.vector_norm(
         mean.extract_mask_embeddings(image, [mean._hold_mask(image, polygon)])[0]
     ) == pytest.approx(1.0)
     assert torch.linalg.vector_norm(
-        weighted.extract_mask_embeddings(image, [weighted._hold_mask(image, hold(100, 100, 110, 110))])[0]
+        weighted.extract_mask_embeddings(
+            image, [weighted._hold_mask(image, hold(100, 100, 110, 110))]
+        )[0]
     ) == pytest.approx(1.0)
 
 
@@ -221,7 +227,9 @@ def test_sklearn_clusterers_receive_precomputed_distances(monkeypatch):
 
 
 def test_validation_and_factory():
-    assert isinstance(route_discriminator_factory("DINO"), DINOClusteringRouteDiscriminator)
+    assert isinstance(
+        route_discriminator_factory("DINO Clustering"), DINOClusteringRouteDiscriminator
+    )
     for kwargs in (
         {"min_cluster_size": 0},
         {"min_samples": 0},

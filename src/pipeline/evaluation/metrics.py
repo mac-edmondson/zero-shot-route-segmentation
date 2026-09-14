@@ -6,6 +6,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from statistics import mean
 
+import numpy as np
+import torch
 from PIL import Image as PILImage
 from PIL import ImageDraw
 
@@ -19,6 +21,75 @@ class HoldMatch:
     iou: float
 
 
+def _rasterize_hold(
+    hold: Hold, size: tuple[int, int], *, use_attribute_mask: bool
+) -> np.ndarray:
+    if use_attribute_mask:
+        candidate = hold.attributes.get("mask")
+        if candidate is not None:
+            try:
+                mask = np.asarray(candidate, dtype=bool)
+                if mask.shape == (size[1], size[0]):
+                    return np.ascontiguousarray(mask)
+            except (TypeError, ValueError):
+                pass
+    mask = PILImage.new("1", size)
+    ImageDraw.Draw(mask).polygon(
+        [(point.x, point.y) for point in hold.polygon.points], fill=1
+    )
+    return np.ascontiguousarray(np.asarray(mask, dtype=bool))
+
+
+def pairwise_hold_iou(
+    predictions: Sequence[Hold],
+    annotations: Sequence[Hold],
+    image_size: tuple[int, int],
+    *,
+    device: str | torch.device | None = None,
+    chunk_size: int = 16,
+) -> np.ndarray:
+    """Compute the exact full-resolution prediction/annotation IoU matrix once."""
+    if chunk_size <= 0:
+        raise ValueError("chunk_size must be positive.")
+    if not predictions or not annotations:
+        return np.zeros((len(predictions), len(annotations)), dtype=np.float64)
+    target = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
+    prediction_masks = [
+        _rasterize_hold(hold, image_size, use_attribute_mask=True)
+        for hold in predictions
+    ]
+    annotation_masks = np.stack(
+        [
+            _rasterize_hold(hold, image_size, use_attribute_mask=False)
+            for hold in annotations
+        ]
+    ).reshape(len(annotations), -1)
+    truth = torch.from_numpy(annotation_masks).to(target, dtype=torch.float32)
+    truth_areas = truth.sum(1)
+    rows = []
+    old_tf32 = torch.backends.cuda.matmul.allow_tf32
+    if target.type == "cuda":
+        torch.backends.cuda.matmul.allow_tf32 = False
+    try:
+        with torch.inference_mode():
+            for start in range(0, len(prediction_masks), chunk_size):
+                batch = np.stack(prediction_masks[start : start + chunk_size]).reshape(
+                    -1, annotation_masks.shape[1]
+                )
+                predicted = torch.from_numpy(batch).to(target, dtype=torch.float32)
+                intersections = predicted @ truth.T
+                unions = (
+                    predicted.sum(1)[:, None] + truth_areas[None, :] - intersections
+                )
+                rows.append(
+                    torch.where(unions > 0, intersections / unions, 0).cpu().numpy()
+                )
+    finally:
+        if target.type == "cuda":
+            torch.backends.cuda.matmul.allow_tf32 = old_tf32
+    return np.concatenate(rows).astype(np.float64, copy=False)
+
+
 def polygon_iou(
     first: Polygon, second: Polygon, image_size: tuple[int, int] | None = None
 ) -> float:
@@ -27,17 +98,15 @@ def polygon_iou(
         max(point.x for point in points) + 1,
         max(point.y for point in points) + 1,
     )
-    masks = [PILImage.new("1", size), PILImage.new("1", size)]
-    for mask, polygon in zip(masks, (first, second), strict=True):
+    masks = []
+    for polygon in (first, second):
+        mask = PILImage.new("1", size)
         ImageDraw.Draw(mask).polygon(
             [(point.x, point.y) for point in polygon.points], fill=1
         )
-    intersection = sum(
-        a and b for a, b in zip(masks[0].getdata(), masks[1].getdata(), strict=True)
-    )
-    union = sum(
-        a or b for a, b in zip(masks[0].getdata(), masks[1].getdata(), strict=True)
-    )
+        masks.append(np.asarray(mask, dtype=bool))
+    intersection = np.count_nonzero(masks[0] & masks[1])
+    union = np.count_nonzero(masks[0] | masks[1])
     return intersection / union if union else 0.0
 
 
@@ -47,14 +116,30 @@ def match_holds(
     *,
     threshold: float = 0.5,
     image_size: tuple[int, int] | None = None,
+    iou_matrix: np.ndarray | None = None,
 ) -> tuple[HoldMatch, ...]:
     if not 0 <= threshold <= 1:
         raise ValueError("threshold must be in [0, 1].")
+    matrix = iou_matrix
+    if matrix is None:
+        if image_size is None:
+            points = tuple(
+                point
+                for hold in (*predictions, *annotations)
+                for point in hold.polygon.points
+            )
+            image_size = (
+                max((point.x for point in points), default=0) + 1,
+                max((point.y for point in points), default=0) + 1,
+            )
+        matrix = pairwise_hold_iou(predictions, annotations, image_size)
+    if matrix.shape != (len(predictions), len(annotations)):
+        raise ValueError("iou_matrix shape must match predictions and annotations.")
     candidates = sorted(
         (
-            (polygon_iou(p.polygon, a.polygon, image_size), pi, ai)
-            for pi, p in enumerate(predictions)
-            for ai, a in enumerate(annotations)
+            (float(matrix[pi, ai]), pi, ai)
+            for pi in range(len(predictions))
+            for ai in range(len(annotations))
         ),
         reverse=True,
     )
