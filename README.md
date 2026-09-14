@@ -14,7 +14,7 @@ For detailed methodology, experimental setup, and benchmark evaluation results, 
 
 ## Interactive Dashboard
 
-<!-- TODO: Add dashboard demo GIF here -->
+![Interactive Dashboard Demo](docs/diagrams/dashboard.gif)
 
 ### Capabilities & Usage
 

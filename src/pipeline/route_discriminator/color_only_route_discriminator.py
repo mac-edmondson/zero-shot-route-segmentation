@@ -33,7 +33,7 @@ class ColorOnlyRouteDiscriminator:
 
     def __init__(
         self,
-        n_clusters: int,
+        n_clusters: int = 6,
         clustering_method="kmeans",
         random_state: int | None = 0,
         color_space="rgb",
