@@ -158,6 +158,16 @@ class SAM3HoldWrapper(SAM3Base):
         frames = [target]
         if exemplar is not None:
             exemplar_image, exemplar_mask = self._validate_exemplar(exemplar)
+            if exemplar_image.size != target.size:
+                exemplar_image = exemplar_image.resize(
+                    target.size, Image.Resampling.BILINEAR
+                )
+                exemplar_mask = np.asarray(
+                    Image.fromarray(exemplar_mask).resize(
+                        target.size, Image.Resampling.NEAREST
+                    ),
+                    dtype=bool,
+                )
             frames.insert(0, exemplar_image.convert("RGB"))
 
         session = self.processor.init_video_session(

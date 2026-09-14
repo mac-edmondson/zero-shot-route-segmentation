@@ -8,6 +8,8 @@ from enum import Enum
 from types import MappingProxyType
 from typing import Any, Literal
 
+import numpy as np
+
 from ..interfaces.data_models import Coordinate, Hold, Image, Polygon, RGBColor, Route
 
 EvaluationCondition = Literal["clean", "distorted"]
@@ -26,6 +28,10 @@ class EvaluationStatus(str, Enum):
 
 
 def _safe(value: Any) -> Any:
+    if isinstance(value, np.ndarray):
+        return _safe(value.tolist())
+    if isinstance(value, np.generic):
+        return _safe(value.item())
     if isinstance(value, Image):
         raise TypeError("PIL images cannot be serialized in an evaluation result.")
     if isinstance(value, Coordinate):
