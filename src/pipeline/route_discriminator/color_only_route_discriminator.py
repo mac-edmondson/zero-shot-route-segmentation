@@ -37,6 +37,7 @@ class ColorOnlyRouteDiscriminator:
         clustering_method="kmeans",
         random_state: int | None = 0,
         color_space="rgb",
+        precomputed_features=None,
         **config,
     ):
         if not isinstance(n_clusters, int) or n_clusters <= 0:
@@ -51,6 +52,7 @@ class ColorOnlyRouteDiscriminator:
             color_space,
             random_state,
         )
+        self.precomputed_features = dict(precomputed_features or {})
 
     @property
     def configuration(self):
@@ -70,7 +72,11 @@ class ColorOnlyRouteDiscriminator:
             if not batch:
                 result.append([])
                 continue
-            features = np.array([self._color(image, h) for h in batch])
+            features = self.precomputed_features.get(id(image))
+            if features is None:
+                features = self._colors(image, batch)
+            if len(features) != len(batch):
+                raise ValueError("precomputed colour count does not match holds.")
             k = min(self.n_clusters, len(batch))
             labels = _kmeans(features, k, self.random_state)
             groups = {}
@@ -78,6 +84,22 @@ class ColorOnlyRouteDiscriminator:
                 groups.setdefault(int(label), set()).add(h)
             result.append([Route(v, i) for i, v in enumerate(groups.values())])
         return result
+
+    def _colors(self, image, holds):
+        array = np.asarray(image.convert("RGB"))
+        if self.color_space == "lab":
+            array = cv2.cvtColor(array, cv2.COLOR_RGB2LAB)
+        result = []
+        for hold in holds:
+            mask = np.zeros(array.shape[:2], np.uint8)
+            cv2.fillPoly(
+                mask,
+                [np.array([(p.x, p.y) for p in hold.polygon.points], np.int32)],
+                1,
+            )
+            values = array[mask.astype(bool)]
+            result.append(values.mean(0) if len(values) else np.zeros(3))
+        return np.asarray(result)
 
     def _color(self, image, hold):
         a = np.asarray(image.convert("RGB"))

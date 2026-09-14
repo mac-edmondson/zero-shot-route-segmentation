@@ -8,11 +8,11 @@ from pathlib import Path
 import cv2
 import numpy as np
 import torch
-from PIL import Image, ImageDraw
+from PIL import Image
 
-from .route_discriminator import RouteDiscriminator
 from ..interfaces.data_models import Hold, Route
 from ..interfaces.errors import BatchAlignmentError
+from .route_discriminator import RouteDiscriminator
 
 
 class TripletRouteDiscriminator:
@@ -94,26 +94,20 @@ class TripletRouteDiscriminator:
                 result.append([])
                 continue
             embeds = self._embeddings(image, batch)
+            distances = torch.cdist(embeds, embeds).square().cpu().numpy()
             groups = []
-            for hold, embedding in zip(batch, embeds):
+            for index, hold in enumerate(batch):
                 for group in groups:
-                    distances = [
-                        float(
-                            torch.nn.functional.pairwise_distance(
-                                embedding[None], other[None]
-                            ).square()
-                        )
-                        for other in group[1]
-                    ]
+                    values = distances[index, group[1]]
                     if (
-                        np.median(distances) <= self.median_threshold
-                        and max(distances) <= self.max_threshold
+                        np.median(values) <= self.median_threshold
+                        and values.max() <= self.max_threshold
                     ):
                         group[0].add(hold)
-                        group[1].append(embedding)
+                        group[1].append(index)
                         break
                 else:
-                    groups.append(({hold}, [embedding]))
+                    groups.append(({hold}, [index]))
             result.append([Route(group[0], i) for i, group in enumerate(groups)])
         return result
 

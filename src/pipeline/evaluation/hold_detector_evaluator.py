@@ -9,11 +9,10 @@ from time import perf_counter
 from typing import Any
 
 import numpy as np
-from PIL import Image as PILImage
-from PIL import ImageDraw
 
 from ..hold_detector.hold_detector import HoldDetector
-from ..interfaces.data_models import Hold, ImageRecord, Polygon
+from ..interfaces.data_models import Hold, ImageRecord
+from .metrics import pairwise_hold_iou
 from .results import (
     ConditionEvaluation,
     EvaluationCaseResult,
@@ -23,40 +22,6 @@ from .results import (
 )
 
 DEFAULT_IOU_THRESHOLDS = tuple(round(0.50 + 0.05 * index, 2) for index in range(10))
-
-
-def _polygon_mask(polygon: Polygon, size: tuple[int, int]) -> np.ndarray:
-    mask = PILImage.new("1", size)
-    ImageDraw.Draw(mask).polygon(
-        [(point.x, point.y) for point in polygon.points], fill=1
-    )
-    return np.asarray(mask, dtype=bool)
-
-
-def _geometry_iou(
-    prediction: Hold, annotation: Hold, size: tuple[int, int]
-) -> tuple[float, str]:
-    candidate = prediction.attributes.get("mask")
-    predicted_mask = None
-    if candidate is not None:
-        try:
-            array = np.asarray(candidate, dtype=bool)
-            if array.shape == (size[1], size[0]):
-                predicted_mask = array
-        except (TypeError, ValueError):
-            predicted_mask = None
-    if predicted_mask is None:
-        predicted_mask = _polygon_mask(prediction.polygon, size)
-        source = "polygon"
-    else:
-        source = "mask"
-    annotation_mask = _polygon_mask(annotation.polygon, size)
-    union = np.logical_or(predicted_mask, annotation_mask).sum()
-    return (
-        float(np.logical_and(predicted_mask, annotation_mask).sum() / union)
-        if union
-        else 0.0
-    ), source
 
 
 def _confidence(hold: Hold, fallback: float) -> tuple[float, str]:
@@ -74,7 +39,7 @@ def _average_precision(
     detections: Sequence[tuple[float, int, int]],
     predictions: Sequence[Sequence[Hold]],
     truths: Sequence[Sequence[Hold]],
-    sizes: Sequence[tuple[int, int]],
+    iou_matrices: Sequence[np.ndarray],
     threshold: float,
 ) -> float:
     total_truths = sum(len(items) for items in truths)
@@ -85,13 +50,12 @@ def _average_precision(
     true_positives: list[int] = []
     false_positives: list[int] = []
     for _, case_index, prediction_index in ordered:
-        prediction = predictions[case_index][prediction_index]
         candidates = [
             (
-                _geometry_iou(prediction, annotation, sizes[case_index])[0],
+                float(iou_matrices[case_index][prediction_index, annotation_index]),
                 annotation_index,
             )
-            for annotation_index, annotation in enumerate(truths[case_index])
+            for annotation_index in range(len(truths[case_index]))
             if (case_index, annotation_index) not in used
         ]
         best = max(candidates, default=(0.0, -1))
@@ -151,6 +115,8 @@ def evaluate_hold_detector(
     confidence_fallback: float = 1.0,
     predictions_by_image: Mapping[str, Sequence[Hold]] | None = None,
     inference_seconds_by_image: Mapping[str, float] | None = None,
+    iou_matrices_by_image: Mapping[str, np.ndarray] | None = None,
+    iou_device: str | None = None,
 ) -> EvaluationReport:
     """Evaluate one detector and return a clean/distorted report."""
     thresholds = tuple(float(value) for value in iou_thresholds)
@@ -181,9 +147,11 @@ def evaluate_hold_detector(
                 elapsed = perf_counter() - started
             else:
                 predictions = tuple(predictions_by_image.get(record.image_id, ()))
-                elapsed = float((inference_seconds_by_image or {}).get(
-                    record.image_id, perf_counter() - started
-                ))
+                elapsed = float(
+                    (inference_seconds_by_image or {}).get(
+                        record.image_id, perf_counter() - started
+                    )
+                )
             status = (
                 EvaluationStatus.EVALUATED if truths else EvaluationStatus.UNEVALUABLE
             )
@@ -262,12 +230,26 @@ def evaluate_hold_detector(
             for prediction_index, prediction in enumerate(predictions)
             for confidence, _ in [_confidence(prediction, confidence_fallback)]
         ]
+        matrices = [
+            (
+                iou_matrices_by_image[record.image_id]
+                if iou_matrices_by_image is not None
+                and record.image_id in iou_matrices_by_image
+                else pairwise_hold_iou(
+                    predictions,
+                    truths,
+                    record.image.size,
+                    device=iou_device or getattr(detector, "device", None),
+                )
+            )
+            for record, predictions, truths, _ in selected
+        ]
         aps = {
             threshold: _average_precision(
                 detections,
                 [item[1] for item in selected],
                 [item[2] for item in selected],
-                [item[0].image.size for item in selected],
+                matrices,
                 threshold,
             )
             for threshold in thresholds

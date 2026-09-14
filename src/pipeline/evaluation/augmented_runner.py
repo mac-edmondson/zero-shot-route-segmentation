@@ -18,6 +18,7 @@ LIGHTING_ARMS = {
     "lighting_dark_075": -0.75,
 }
 
+
 def build_lighting_records(
     records: Sequence[ImageRecord],
     strength: float,
@@ -39,6 +40,7 @@ def build_lighting_records(
         ),
     )
     return tuple(provider.iter_split(split))
+
 
 def lighting_manifest(
     records: Sequence[ImageRecord],

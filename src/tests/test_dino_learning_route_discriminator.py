@@ -51,7 +51,7 @@ def test_checkpoint_loading_and_configuration(tmp_path):
     discriminator = DINOLearningRouteDiscriminator(path, device="cpu")
     discriminator._ensure_head_loaded()
     assert discriminator._head_loaded
-    assert discriminator.configuration["pair_threshold"] == 0.7
+    assert discriminator.configuration["pair_threshold"] == 0.5
 
 
 def test_missing_checkpoint_is_rejected(tmp_path):

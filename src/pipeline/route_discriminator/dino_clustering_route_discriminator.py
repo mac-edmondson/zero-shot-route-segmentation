@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Literal
 
@@ -24,6 +24,7 @@ Pooling = Literal["weighted", "mean"]
 ClusteringMethod = Literal["hdbscan", "dbscan", "agglomerative"]
 AgglomerativeLinkage = Literal["average", "complete", "single"]
 
+
 class DINOClusteringRouteDiscriminator(DINOv3):
     """Group holds by DINO/color distance using a configurable clusterer."""
 
@@ -41,6 +42,8 @@ class DINOClusteringRouteDiscriminator(DINOv3):
         distance_threshold: float = 0.3,
         linkage: AgglomerativeLinkage = "average",
         color_weight: float = 0.0,
+        precomputed_embeddings: Mapping[tuple[int, str], torch.Tensor] | None = None,
+        precomputed_colours: Mapping[int, np.ndarray] | None = None,
     ) -> None:
         if pooling not in {"weighted", "mean"}:
             raise InvalidRouteDiscriminatorConfigError(
@@ -83,7 +86,11 @@ class DINOClusteringRouteDiscriminator(DINOv3):
             raise InvalidRouteDiscriminatorConfigError(
                 "min_samples must be a positive integer or None."
             )
-        super().__init__(model_dir=model_dir, device=device)
+        super().__init__(
+            model_dir=model_dir,
+            device=device,
+            precomputed_embeddings=precomputed_embeddings,
+        )
         self.pooling = pooling
         self.min_cluster_size = min_cluster_size
         self.min_samples = min_samples
@@ -92,6 +99,7 @@ class DINOClusteringRouteDiscriminator(DINOv3):
         self.distance_threshold = float(distance_threshold)
         self.linkage = linkage
         self.color_weight = float(color_weight)
+        self.precomputed_colours = dict(precomputed_colours or {})
 
     @property
     def configuration(self) -> dict[str, object]:
@@ -118,17 +126,27 @@ class DINOClusteringRouteDiscriminator(DINOv3):
             if not image_holds:
                 result.append([])
                 continue
-            masks = [self._hold_mask(image, hold) for hold in image_holds]
-            features = self.extract_mask_embeddings(image, masks, self.pooling)
+            cached = self.precomputed_embeddings.get((id(image), self.pooling))
+            if cached is None:
+                masks = [self._hold_mask(image, hold) for hold in image_holds]
+                features = self.extract_mask_embeddings(image, masks, self.pooling)
+            else:
+                if cached.shape != (len(image_holds), self.HIDDEN_SIZE):
+                    raise ValueError(
+                        "precomputed embedding count does not match holds."
+                    )
+                features = cached.to(self.device)
             if len(image_holds) == 1:
                 labels = np.array([0])
                 distances = None
             else:
                 distances = self._dino_distances(features.detach().cpu().numpy())
             if self.color_weight > 0 and distances is not None:
-                colours = np.stack(
-                    [self._lab_feature(image, hold) for hold in image_holds]
-                )
+                colours = self.precomputed_colours.get(id(image))
+                if colours is None:
+                    colours = self._lab_features(image, image_holds)
+                if len(colours) != len(image_holds):
+                    raise ValueError("precomputed colour count does not match holds.")
                 distances = (
                     distances + self.color_weight * self._ciede2000_distances(colours)
                 ) / (1 + self.color_weight)
@@ -187,6 +205,25 @@ class DINOClusteringRouteDiscriminator(DINOv3):
             y = max(0, min(image.height - 1, hold.centroid.y))
             ImageDraw.Draw(mask).point((x, y), fill=255)
         return mask
+
+    @classmethod
+    def _lab_features(cls, image: Image, holds: Sequence[Hold]) -> np.ndarray:
+        pixels = cv2.cvtColor(np.asarray(image.convert("RGB")), cv2.COLOR_RGB2LAB)
+        result = []
+        for hold in holds:
+            mask = PILImage.new("L", image.size, 0)
+            ImageDraw.Draw(mask).polygon(
+                [(point.x, point.y) for point in hold.polygon.points], fill=1
+            )
+            values = pixels[np.asarray(mask, dtype=bool)]
+            if not len(values):
+                result.append(np.zeros(3, dtype=np.float32))
+                continue
+            values = values.astype(np.float32)
+            values[:, 0] *= 100 / 255
+            values[:, 1:] = (values[:, 1:] - 128) * 100 / 255
+            result.append(np.median(values, axis=0).astype(np.float32))
+        return np.stack(result) if result else np.empty((0, 3), dtype=np.float32)
 
     @staticmethod
     def _lab_feature(image: Image, hold: Hold) -> np.ndarray:
@@ -282,7 +319,7 @@ class DINOClusteringRouteDiscriminator(DINOv3):
         if self.clustering_method == "hdbscan":
             return self._hdbscan_labels(distances)
         try:
-            from sklearn.cluster import AgglomerativeClustering, DBSCAN
+            from sklearn.cluster import DBSCAN, AgglomerativeClustering
         except ModuleNotFoundError as exc:
             raise InvalidRouteDiscriminatorConfigError(
                 "DBSCAN and agglomerative clustering require the 'scikit-learn' package."
