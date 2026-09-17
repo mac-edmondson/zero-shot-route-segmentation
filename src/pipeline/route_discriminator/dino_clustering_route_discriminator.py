@@ -40,7 +40,7 @@ class DINOClusteringRouteDiscriminator(DINOv3):
         eps: float = 0.3,
         distance_threshold: float = 0.3,
         linkage: AgglomerativeLinkage = "average",
-        color_weight: float = 0.0,
+        color_weight: float = 1.0,
     ) -> None:
         if pooling not in {"weighted", "mean"}:
             raise InvalidRouteDiscriminatorConfigError(

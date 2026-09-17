@@ -36,7 +36,7 @@ class ColorOnlyRouteDiscriminator:
         n_clusters: int,
         clustering_method="kmeans",
         random_state: int | None = 0,
-        color_space="rgb",
+        color_space="lab",
         **config,
     ):
         if not isinstance(n_clusters, int) or n_clusters <= 0:

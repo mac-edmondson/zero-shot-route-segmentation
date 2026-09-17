@@ -27,11 +27,14 @@ class YOLOv8HoldDetector:
         self,
         weights_path: str | Path | None = None,
         device: str | torch.device | None = None,
-        score_threshold: float | None = None,
+        score_threshold: float | None = 0.4,
+        nms_iou_threshold: float | None = 0.3,
         **config: object,
     ) -> None:
         if score_threshold is not None and not 0 <= score_threshold <= 1:
             raise ValueError("score_threshold must be in [0, 1].")
+        if nms_iou_threshold is not None and not 0 <= nms_iou_threshold <= 1:
+            raise ValueError("nms_iou_threshold must be in [0, 1].")
         self.weights_path = Path(weights_path or self._WEIGHTS_PATH)
         self.device = torch.device(
             "cuda" if device is None and torch.cuda.is_available() else device or "cpu"
@@ -40,8 +43,9 @@ class YOLOv8HoldDetector:
             raise ValueError("YOLOv8HoldDetector supports CPU and CUDA devices.")
         if self.device.type == "cuda" and not torch.cuda.is_available():
             raise RuntimeError("CUDA was requested, but it is not available.")
-        self.score_threshold, self.extra_config, self.model = (
+        self.score_threshold, self.nms_iou_threshold, self.extra_config, self.model = (
             score_threshold,
+            nms_iou_threshold,
             dict(config),
             None,
         )
@@ -52,6 +56,7 @@ class YOLOv8HoldDetector:
             "weights_path": str(self.weights_path),
             "device": str(self.device),
             "score_threshold": self.score_threshold,
+            "nms_iou_threshold": self.nms_iou_threshold,
             **self.extra_config,
         }
 
@@ -84,6 +89,8 @@ class YOLOv8HoldDetector:
         kwargs: dict[str, Any] = {"device": str(self.device), "verbose": False}
         if self.score_threshold is not None:
             kwargs["conf"] = self.score_threshold
+        if self.nms_iou_threshold is not None:
+            kwargs["iou"] = self.nms_iou_threshold
         results = self.model.predict(
             [image.convert("RGB") for image in images], **kwargs
         )
