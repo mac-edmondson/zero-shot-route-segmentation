@@ -34,10 +34,10 @@ def _create_sam_hold_detector(config: Mapping[str, Any] = dict()) -> HoldDetecto
     return SAMHoldDetector(**config)
 
 
-def _create_mock_hold_detector(config: Mapping[str, Any] = dict()) -> HoldDetector:
-    from .mock_hold_detector import MockHoldDetector
-
-    return MockHoldDetector(**config)
+#def _create_mock_hold_detector(config: Mapping[str, Any] = dict()) -> HoldDetector:
+#   from .mock_hold_detector import MockHoldDetector
+#
+#    return MockHoldDetector(**config)
 
   
 def _create_yolo_hold_detector(config: Mapping[str, Any] = dict()) -> HoldDetector:
@@ -57,7 +57,7 @@ _AVAILABLE_HOLD_DETECTORS_MAP: Mapping[str, _Constructor] = {
     "SAM 3": _create_sam_hold_detector,  # TODO: Consider adding parameters we want? @joswin03
     "YOLO": _create_yolo_hold_detector,
     "Ground Truth": _create_ground_truth_hold_detector,
-    "Mock": _create_mock_hold_detector,
+    #"Mock": _create_mock_hold_detector,
 }
 AVAILABLE_HOLD_DETECTORS = list(_AVAILABLE_HOLD_DETECTORS_MAP.keys())
 
