@@ -41,7 +41,7 @@ class DINOClusteringRouteDiscriminator(DINOv3):
         eps: float = 0.3,
         distance_threshold: float = 0.3,
         linkage: AgglomerativeLinkage = "average",
-        color_weight: float = 0.0,
+        color_weight: float = 1.0,
         precomputed_embeddings: Mapping[tuple[int, str], torch.Tensor] | None = None,
         precomputed_colours: Mapping[int, np.ndarray] | None = None,
     ) -> None:

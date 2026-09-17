@@ -36,7 +36,7 @@ class ColorOnlyRouteDiscriminator:
         n_clusters: int = 6,
         clustering_method="kmeans",
         random_state: int | None = 0,
-        color_space="rgb",
+        color_space="lab",
         precomputed_features=None,
         **config,
     ):
