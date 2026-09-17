@@ -79,7 +79,8 @@ def main() -> None:
         detector = MockHoldDetector()
     elif canonical_name == "YOLO":
         detector = hold_detector_factory(
-            canonical_name, config={"score_threshold": 0.4}
+            canonical_name,
+            config={"score_threshold": 0.4, "nms_iou_threshold": 0.3},
         )
     else:
         detector = hold_detector_factory(canonical_name)

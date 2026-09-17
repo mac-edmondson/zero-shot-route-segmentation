@@ -80,7 +80,8 @@ def main() -> None:
         hold_detector = MockHoldDetector()
     elif canonical_hd == "YOLO":
         hold_detector = hold_detector_factory(
-            canonical_hd, config={"score_threshold": 0.4}
+            canonical_hd,
+            config={"score_threshold": 0.4, "nms_iou_threshold": 0.3},
         )
     else:
         hold_detector = hold_detector_factory(canonical_hd)
