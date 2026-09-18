@@ -31,6 +31,7 @@ try:
         route_discriminator_factory,
     )
     from ...pipeline.route_discriminator_pipeline import RouteDiscriminatorPipeline
+    from ...pipeline.utility.ground_truth_loader import pixel_hash
     from ...pipeline.utility.sam3_ui import SAMWrapper
 except ImportError:  # Support `PYTHONPATH=src` development imports.
     from pipeline.hold_detector.hold_detector_factory import hold_detector_factory
@@ -53,6 +54,7 @@ except ImportError:  # Support `PYTHONPATH=src` development imports.
         route_discriminator_factory,
     )
     from pipeline.route_discriminator_pipeline import RouteDiscriminatorPipeline
+    from pipeline.utility.ground_truth_loader import pixel_hash
     from pipeline.utility.sam3_ui import SAMWrapper
 from ..schemas import (
     AugmentWorkingImageRequest,
@@ -189,7 +191,12 @@ def augment_image(
         )
     if request.lighting_percent:
         augmentations.append(LightingAugmentation(request.lighting_percent))
-    return AugmentationPlan(tuple(augmentations), seed=0).apply(image)
+    original_hash = getattr(image, "info", {}).get("source_pixel_hash") or pixel_hash(
+        image
+    )
+    result = AugmentationPlan(tuple(augmentations), seed=0).apply(image)
+    result.info["source_pixel_hash"] = original_hash
+    return result
 
 
 def infer(

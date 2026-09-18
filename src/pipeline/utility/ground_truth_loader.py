@@ -1,5 +1,4 @@
-""" Load ground-truth holds from the restructured COCO-style JSON export. """
-
+"""Load ground-truth holds from the restructured COCO-style JSON export."""
 
 from __future__ import annotations
 
@@ -16,12 +15,13 @@ UNKNOWN_ROUTE_LABEL = "Unknown"
 
 def pixel_hash(image: Image) -> str:
     """Fingerprint an image's exact pixel content."""
+    if hasattr(image, "info") and "source_pixel_hash" in image.info:
+        return image.info["source_pixel_hash"]
     return hashlib.sha256(image.convert("RGB").tobytes()).hexdigest()
 
 
 def build_routes(holds: Iterable[Hold]) -> list[Route]:
-    """Group holds sharing a route_label into Route objects.
-    """
+    """Group holds sharing a route_label into Route objects."""
     holds_by_label: dict[str, list[Hold]] = {}
     for hold in holds:
         label = hold.attributes.get("route_label")
