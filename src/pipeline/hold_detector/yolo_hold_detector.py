@@ -28,6 +28,7 @@ class YOLOv8HoldDetector:
         weights_path: str | Path | None = None,
         device: str | torch.device | None = None,
         score_threshold: float | None = None,
+        nms_iou_threshold: float | None = None,
         **config: object,
     ) -> None:
         if score_threshold is not None and not 0 <= score_threshold <= 1:
@@ -45,6 +46,7 @@ class YOLOv8HoldDetector:
             dict(config),
             None,
         )
+        self.nms_iou_threshold = nms_iou_threshold
 
     @property
     def configuration(self) -> dict[str, object]:
@@ -84,6 +86,8 @@ class YOLOv8HoldDetector:
         kwargs: dict[str, Any] = {"device": str(self.device), "verbose": False}
         if self.score_threshold is not None:
             kwargs["conf"] = self.score_threshold
+        if self.nms_iou_threshold is not None:
+            kwargs["conf"] = self.nms_iou_threshold
         results = self.model.predict(
             [image.convert("RGB") for image in images], **kwargs
         )

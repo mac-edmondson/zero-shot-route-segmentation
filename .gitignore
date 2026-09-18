@@ -28,7 +28,7 @@ src/SAM_hold/results/
 
 # Disposable local validation data and artifacts
 tmp/
-
+results/
 # Other
 Project\ stuff/
 
